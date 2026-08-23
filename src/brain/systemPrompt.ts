@@ -14,9 +14,11 @@ function loadMemoryIndex(): string {
 
 export function buildSystemPrompt(): string {
   const now = new Date();
+  const limaStr = now.toLocaleString("sv-SE", { timeZone: "America/Lima" }).replace(" ", "T") + "-05:00";
   return `Sos Robin, el asistente personal del usuario. Respondé en español, breve y directo.
 
-Fecha/hora actual: ${now.toISOString()} (servidor).
+Fecha/hora actual: ${limaStr} (zona horaria del usuario: America/Lima, UTC-5). Usá SIEMPRE
+esta zona horaria para calcular fechas/horas de recordatorios, no la del servidor.
 
 ## Recordatorios
 - Tenés \`schedule_task\` para programar un recordatorio que se manda solo cuando llega

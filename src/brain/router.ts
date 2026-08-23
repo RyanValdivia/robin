@@ -10,6 +10,25 @@ import { scheduleReminder } from "./scheduler.ts";
 
 export type Category = "direct" | "knowledge" | "agent";
 
+// Zona horaria fija del usuario (Lima, UTC-5 sin DST) — todo lo que muestra/calcula
+// hora local acá usa esto, no la del servidor (VPS corre en UTC).
+const TZ = "America/Lima";
+const TZ_OFFSET_HOURS = 5; // UTC-5, Perú no tiene horario de verano
+
+function limaNowParts(): { year: number; month: number; day: number; hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const p = Object.fromEntries(fmt.formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute };
+}
+
 /** Contexto del canal que llama — lo necesita el recordatorio DIRECT (V5) para saber a quién avisar. */
 export type RouteContext = { userId: number; channel: string; externalId: string };
 
@@ -75,10 +94,11 @@ export async function classify(text: string): Promise<Category> {
 }
 
 function nextOccurrence(hour: number, minute: number, forceTomorrow: boolean): Date {
-  const d = new Date();
-  d.setHours(hour, minute, 0, 0);
-  if (forceTomorrow || d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
-  return d;
+  const p = limaNowParts();
+  // hour:minute son hora Lima -> UTC = hora Lima + 5.
+  let target = Date.UTC(p.year, p.month - 1, p.day, hour + TZ_OFFSET_HOURS, minute, 0, 0);
+  if (forceTomorrow || target <= Date.now()) target += 24 * 3_600_000;
+  return new Date(target);
 }
 
 /** Intenta armar un recordatorio DIRECT (sin LLM). null si no aplica o falta contexto de canal. */
@@ -96,7 +116,7 @@ async function tryScheduleDirectReminder(text: string, ctx?: RouteContext): Prom
     if (hour > 23 || minute > 59) return null;
     const when = nextOccurrence(hour, minute, Boolean(tomorrow));
     await scheduleReminder(ctx.userId, ctx.channel, ctx.externalId, body.trim(), when);
-    return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-ES")}.`;
+    return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-PE", { timeZone: TZ })}.`;
   }
 
   const inMatch = REMINDER_IN_RE.exec(t);
@@ -120,7 +140,7 @@ async function handleDirect(text: string, ctx?: RouteContext): Promise<string | 
   if (GREETING_RE.test(t)) return "Hola! Contame qué necesitás.";
   if (TIME_RE.test(t)) {
     const now = new Date();
-    return `Ahora son las ${now.toLocaleTimeString("es-ES")} del ${now.toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} (hora del servidor).`;
+    return `Ahora son las ${now.toLocaleTimeString("es-PE", { timeZone: TZ })} del ${now.toLocaleDateString("es-PE", { timeZone: TZ, weekday: "long", year: "numeric", month: "long", day: "numeric" })} (hora de Lima).`;
   }
   if (CALC_RE.test(t) && /\d/.test(t)) {
     try {
