@@ -24,6 +24,8 @@ import { routeMessage } from "../../brain/router.ts";
 import { listNotes, readNote } from "../../brain/memory.ts";
 import { listPendingReminders, cancelReminder } from "../../brain/scheduler.ts";
 import { getMessageStats, getGroqStats } from "../../brain/usage.ts";
+import { sttAvailable, transcribeAudio } from "../../brain/stt.ts";
+import { ttsAvailable, synthesizeSpeech } from "../../brain/tts.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -56,6 +58,51 @@ app.post("/api/message", async (req, res) => {
   } catch (err) {
     console.error("[web] error procesando mensaje:", err);
     res.status(500).json({ error: "tuve un error interno procesando eso" });
+  }
+});
+
+// Voz (V6, ver plan) — igual que Telegram: se transcribe con whisper/, entra
+// al mismo routeMessage(), y si hay TTS configurado la respuesta también
+// viaja como audio (base64 en el JSON — los clips son chicos, no vale la
+// pena un endpoint binario aparte).
+app.get("/api/voice-status", (_req, res) => {
+  res.json({ stt: sttAvailable(), tts: ttsAvailable() });
+});
+
+app.post("/api/voice-message", express.raw({ type: () => true, limit: "15mb" }), async (req, res) => {
+  if (!sttAvailable()) {
+    res.status(503).json({ error: "STT no configurado" });
+    return;
+  }
+  const audio = req.body as Buffer;
+  if (!Buffer.isBuffer(audio) || audio.length === 0) {
+    res.status(400).json({ error: "falta audio" });
+    return;
+  }
+  try {
+    const transcript = await transcribeAudio(audio);
+    if (!transcript) {
+      res.json({ transcript: "", reply: "No entendí el audio, ¿lo repetís?", audio: null });
+      return;
+    }
+    const userId = await getOwnerUserId();
+    const reply = await routeMessage(
+      transcript,
+      () => getSession().send(transcript),
+      userId ? { userId, channel: "web", externalId: "owner" } : undefined,
+    );
+    let audioBase64: string | null = null;
+    if (ttsAvailable() && reply) {
+      try {
+        audioBase64 = (await synthesizeSpeech(reply)).toString("base64");
+      } catch (err) {
+        console.error("[web] error generando audio de respuesta:", err);
+      }
+    }
+    res.json({ transcript, reply: reply || "(sin respuesta)", audio: audioBase64 });
+  } catch (err) {
+    console.error("[web] error procesando mensaje de voz:", err);
+    res.status(500).json({ error: "tuve un error interno procesando el audio" });
   }
 });
 

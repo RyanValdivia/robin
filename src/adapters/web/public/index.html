@@ -71,8 +71,15 @@
             'self-start text-muted italic': m.role === 'typing',
             'self-start border border-red-900 text-red-300': m.role === 'error',
           }"
-          x-text="m.text"
-        ></div>
+        >
+          <span x-text="m.text"></span>
+          <button
+            x-show="m.audio"
+            @click="playAudio(m.audio)"
+            type="button"
+            class="block mt-1.5 text-xs text-accent hover:underline"
+          >▶ escuchar</button>
+        </div>
       </template>
     </div>
     <form @submit.prevent="send()" class="border-t border-border px-5 py-3.5 flex gap-2.5 max-w-3xl w-full mx-auto shrink-0">
@@ -84,6 +91,14 @@
         placeholder="Escribí algo... (Enter para mandar, Shift+Enter salto de línea)"
         class="flex-1 resize-none bg-panel border border-border rounded-xl text-gray-200 px-3 py-2.5 text-[14.5px] max-h-36 focus:outline-none focus:border-accent"
       ></textarea>
+      <button
+        x-show="voice.stt"
+        type="button"
+        @click="toggleRecording()"
+        :class="recording ? 'bg-red-500 animate-pulse' : 'bg-panel2 hover:bg-panel2/70'"
+        class="rounded-xl px-3.5 text-sm shrink-0"
+        :title="recording ? 'Grabando... click para mandar' : 'Grabar nota de voz'"
+      >🎙️</button>
       <button type="submit" :disabled="sending" class="bg-accent disabled:opacity-50 text-bg font-semibold rounded-xl px-4 text-sm">Enviar</button>
     </form>
   </main>
@@ -243,6 +258,12 @@ function robinApp() {
     draft: "",
     sending: false,
 
+    // voz (V6)
+    voice: { stt: false, tts: false },
+    recording: false,
+    mediaRecorder: null,
+    audioChunks: [],
+
     // memoria
     notes: [],
     selectedNote: null,
@@ -268,10 +289,20 @@ function robinApp() {
       this.loadMemory();
       this.loadReminders();
       this.loadUsage();
+      this.loadVoiceStatus();
       this.$watch("tab", (t) => {
         if (t === "reminders") this.loadReminders();
         if (t === "usage") this.loadUsage();
       });
+    },
+
+    async loadVoiceStatus() {
+      try {
+        const res = await fetch("/api/voice-status");
+        this.voice = await res.json();
+      } catch (e) {
+        console.error(e);
+      }
     },
 
     get memoryGroups() {
@@ -402,6 +433,67 @@ function robinApp() {
         this.sending = false;
         this.scrollLog();
       }
+    },
+
+    async toggleRecording() {
+      if (this.recording) {
+        this.mediaRecorder?.stop(); // el resto sigue en onstop, ver abajo
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.audioChunks = [];
+        this.mediaRecorder = new MediaRecorder(stream);
+        this.mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) this.audioChunks.push(e.data);
+        };
+        this.mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(this.audioChunks, { type: this.mediaRecorder.mimeType || "audio/webm" });
+          this.sendVoice(blob);
+        };
+        this.mediaRecorder.start();
+        this.recording = true;
+      } catch (e) {
+        console.error(e);
+        this.messages.push({ role: "error", text: "No pude acceder al micrófono (¿le diste permiso al navegador?)." });
+        this.scrollLog();
+      }
+    },
+
+    async sendVoice(blob) {
+      this.recording = false;
+      this.sending = true;
+      this.messages.push({ role: "typing", text: "transcribiendo..." });
+      this.scrollLog();
+
+      try {
+        const res = await fetch("/api/voice-message", {
+          method: "POST",
+          headers: { "Content-Type": blob.type || "application/octet-stream" },
+          body: blob,
+        });
+        const data = await res.json();
+        this.messages.pop(); // typing
+        if (!res.ok) {
+          this.messages.push({ role: "error", text: data.error || "Error" });
+        } else {
+          if (data.transcript) this.messages.push({ role: "user", text: `🎙️ "${data.transcript}"` });
+          this.messages.push({ role: "bot", text: data.reply, audio: data.audio || null });
+          if (data.audio) this.playAudio(data.audio);
+        }
+      } catch (e) {
+        this.messages.pop();
+        this.messages.push({ role: "error", text: "No pude mandar el audio." });
+      } finally {
+        this.sending = false;
+        this.scrollLog();
+      }
+    },
+
+    playAudio(base64) {
+      const audio = new Audio(`data:audio/ogg;base64,${base64}`);
+      audio.play().catch((e) => console.error("no se pudo reproducir el audio:", e));
     },
   };
 }
