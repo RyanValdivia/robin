@@ -28,6 +28,14 @@ function listNoteFiles(): string[] {
   return out;
 }
 
+// El vault es editable a mano (Obsidian, notas sincronizadas manualmente
+// entre Windows/Linux, etc.) — normalizamos CRLF acá, en el único punto por
+// donde pasa toda lectura de una nota, así el resto del código (regex de
+// frontmatter, split por líneas) puede asumir siempre LF.
+function readNoteFile(relativePath: string): string {
+  return fs.readFileSync(path.join(MEMORY_DIR, relativePath), "utf-8").replace(/\r\n/g, "\n");
+}
+
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
 }
@@ -38,7 +46,7 @@ function grepSearch(query: string, limit = 5): Array<{ document_path: string; sn
   if (terms.length === 0) return [];
   const results: Array<{ document_path: string; snippet: string }> = [];
   for (const rel of listNoteFiles()) {
-    const content = fs.readFileSync(path.join(MEMORY_DIR, rel), "utf-8");
+    const content = readNoteFile(rel);
     const lower = content.toLowerCase();
     if (terms.some((t) => lower.includes(t))) {
       const line = content.split("\n").find((l) => terms.some((t) => l.toLowerCase().includes(t)));
@@ -91,8 +99,7 @@ export async function searchMemory(query: string, k = 5): Promise<SearchResult[]
 
 /** Reindexa una nota existente: recalcula embedding y upsertea en memory_embeddings. */
 export async function indexNote(relativePath: string): Promise<void> {
-  const full = path.join(MEMORY_DIR, relativePath);
-  const content = stripFrontmatter(fs.readFileSync(full, "utf-8"));
+  const content = stripFrontmatter(readNoteFile(relativePath));
   const vec = await embed(content || relativePath);
   const literal = `[${vec.join(",")}]`;
   await pool.query(
@@ -114,7 +121,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 function updateMemoryIndex(relativePath: string, description: string): void {
   const category = relativePath.split("/")[0];
   const label = CATEGORY_LABELS[category] ?? category;
-  let text = fs.existsSync(MEMORY_INDEX) ? fs.readFileSync(MEMORY_INDEX, "utf-8") : "# Memory Index\n";
+  let text = fs.existsSync(MEMORY_INDEX)
+    ? fs.readFileSync(MEMORY_INDEX, "utf-8").replace(/\r\n/g, "\n")
+    : "# Memory Index\n";
   const bullet = `- ${relativePath} — ${description}`;
   const headerRe = new RegExp(`^## ${label}\\s*$`, "m");
 
@@ -167,10 +176,7 @@ export type NoteEntry = { path: string; type: string; name: string; description:
 
 /** Lista todas las notas del vault con su metadata (frontmatter) — para la Web UI (V7). */
 export function listNotes(): NoteEntry[] {
-  return listNoteFiles().map((rel) => {
-    const content = fs.readFileSync(path.join(MEMORY_DIR, rel), "utf-8");
-    return { path: rel, ...parseFrontmatter(content) };
-  });
+  return listNoteFiles().map((rel) => ({ path: rel, ...parseFrontmatter(readNoteFile(rel)) }));
 }
 
 /**
@@ -180,5 +186,5 @@ export function listNotes(): NoteEntry[] {
  */
 export function readNote(relativePath: string): string | null {
   if (!listNoteFiles().includes(relativePath)) return null;
-  return stripFrontmatter(fs.readFileSync(path.join(MEMORY_DIR, relativePath), "utf-8"));
+  return stripFrontmatter(readNoteFile(relativePath));
 }
