@@ -87,7 +87,26 @@ V5 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Proactividad: scheduler.
   fila en Postgres pero `reminderQueue.add()` tiraba antes de encolar el
   job — el recordatorio nunca disparaba. Fix: `"task-${id}"`.
 
-V6 — Voz: `faster-whisper` + Piper, local, sin APIs de pago.
+V6 (EN CURSO) — Voz: solo STT por ahora (decisión: alcance recortado a
+transcribir, sin TTS/Piper — menos infra, cubre el caso de uso principal).
+- `whisper/`: servicio Python aparte (faster-whisper/ctranslate2) con un
+  wrapper HTTP mínimo (FastAPI) — expone `POST /transcribe` (bytes de audio
+  crudos) → `{text, language}`. Separado del proceso Node del brain porque
+  ctranslate2 es Python.
+- Modelo `small`, `compute_type=int8` en CPU (sin GPU en el VPS). Cacheado en
+  volumen (`whisper_model`) para no re-descargar en cada rebuild/restart.
+- Sin puerto publicado en prod — solo red interna, el brain le habla por
+  nombre de servicio (`WHISPER_URL=http://whisper:8000`). En dev local se
+  publica en `127.0.0.1:8001` porque el brain corre en el host, no en Docker.
+- Telegram: nota de voz se descarga (`ctx.getFile()`), se manda entera al
+  servicio, el texto transcripto entra al mismo `routeMessage()` que
+  cualquier mensaje de texto — cero código nuevo en el router/DIRECT/
+  KNOWLEDGE/AGENT. La respuesta muestra la transcripción arriba (🎙️) para
+  que el usuario pueda notar si Whisper entendió mal algo.
+- **Pendiente de verificar en vivo (riesgo anotado en el plan desde el
+  principio):** que `ctranslate2`/`faster-whisper` con `compute_type=int8`
+  ande bien en ARM (Ampere A1, Neoverse-N1) — si falla, primer fallback es
+  `compute_type=int8_float32` o `float32` en `whisper/server.py`.
 
 V7 — Más canales: Discord, WhatsApp (Baileys), Web UI.
 

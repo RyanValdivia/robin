@@ -26,6 +26,18 @@ services:
     volumes:
       - redis_data:/data
 
+  # STT (V6, ver plan) — faster-whisper como servicio HTTP aparte (Python).
+  # Publicado en localhost porque en dev el brain corre en el host (npm run
+  # chat), no en Docker.
+  whisper:
+    build: ./whisper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - whisper_model:/models
+
 volumes:
   pg_data:
   redis_data:
+  whisper_model:

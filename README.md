@@ -6,19 +6,23 @@ AGENT vía Claude Agent SDK con GitHub/Bash/Browser), recordatorios proactivos,
 corriendo 24/7 en VPS propio, hoy por Telegram. Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V5 listo, corriendo 24/7 en el VPS
+## Estado: V6 (STT) en curso, V0-V5 listas en el VPS
 
 - **V0-V5 listas**: CLI local, memoria persistente, Bash con guardarraíl,
   Playwright MCP, GitHub MCP, Telegram (`@robin_rv_bot`), router híbrido por
   capacidad, recordatorios proactivos (scheduler que no depende de Claude
   para disparar).
-- Siguiente: V6 — voz local (faster-whisper + Piper).
+- **V6 (voz, en curso)**: notas de voz por Telegram se transcriben con
+  faster-whisper (`whisper/`, servicio Python aparte, HTTP interno) y siguen
+  el mismo camino que un mensaje de texto. Solo STT por ahora — sin
+  respuestas en audio (TTS/Piper, evaluar después si hace falta).
+- Siguiente: V7 — más canales (Discord, WhatsApp, Web UI).
 
 ## Desarrollo local
 
 ```
 npm install
-docker compose up -d          # Postgres + Redis
+docker compose up -d          # Postgres + Redis + whisper (STT)
 docker compose exec -T postgres psql -U robin -d robin < db/schema.sql   # solo la primera vez
 npm run chat                  # CLI
 ```

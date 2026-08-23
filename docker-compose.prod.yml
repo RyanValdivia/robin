@@ -51,6 +51,18 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # STT (V6, ver plan) — faster-whisper, servicio interno sin puerto publicado
+  # (solo el brain le habla, por nombre de servicio).
+  whisper:
+    build: ./whisper
+    restart: unless-stopped
+    volumes:
+      - whisper_model:/models
+    networks:
+      - robin_internal
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   robin_internal:
     driver: bridge
@@ -67,3 +79,4 @@ volumes:
   redis_data:
     external: true
     name: jarvis_jarvis_redis_data
+  whisper_model:

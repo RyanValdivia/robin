@@ -1,11 +1,12 @@
 // Telegram adapter — thin: normaliza mensajes, valida owner, delega al brain.
 // Sin lógica de LLM acá (ver plan, arquitectura: Event Gateway).
-import { Bot } from "grammy";
+import { Bot, type Context } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "../../config.ts";
 import { isOwner, getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
 import { routeMessage } from "../../brain/router.ts";
 import { registerOutboundSender, startSchedulerWorker } from "../../brain/scheduler.ts";
+import { sttAvailable, transcribeAudio } from "../../brain/stt.ts";
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error("[telegram] TELEGRAM_BOT_TOKEN no seteado en .env — no puedo arrancar.");
@@ -52,8 +53,40 @@ bot.command("start", async (ctx) => {
   await ctx.reply("Hola, soy Robin. Contame qué necesitás.");
 });
 
+// Compartido por texto y voz (transcripta) — el router no distingue de dónde
+// vino el texto. `prefix` es para mostrar la transcripción antes de la
+// respuesta cuando el mensaje vino de un audio.
+async function handleIncomingText(
+  ctx: Context,
+  chatId: number,
+  fromId: string,
+  text: string,
+  prefix = "",
+): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  try {
+    // El router decide DIRECT/KNOWLEDGE/AGENT (ver brain/router.ts) — la sesión
+    // de Claude (sessionFor) solo se crea si el mensaje termina yendo a AGENT,
+    // así DIRECT/KNOWLEDGE no gastan cuota de Claude ni levantan el proceso.
+    // El ctx (userId/channel/externalId) es lo que necesita un recordatorio
+    // DIRECT (V5) para saber a quién avisar cuando dispare.
+    const userId = await getOwnerUserId(); // solo llega acá si isOwner ya dio true
+    const reply = await routeMessage(
+      text,
+      () => sessionFor(chatId).send(text),
+      userId ? { userId, channel: "telegram", externalId: fromId } : undefined,
+    );
+    const full = prefix + (reply || "(sin respuesta)");
+    for (const chunk of splitForTelegram(full)) {
+      await ctx.reply(chunk);
+    }
+  } catch (err) {
+    console.error("[telegram] error procesando mensaje:", err);
+    await ctx.reply("Uh, tuve un error interno procesando eso. Ver logs del server.");
+  }
+}
+
 bot.on("message:text", async (ctx) => {
-  const chatId = ctx.chat.id;
   const fromId = String(ctx.from?.id ?? "");
 
   if (!(await isOwner("telegram", fromId))) {
@@ -63,26 +96,38 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
-  await ctx.replyWithChatAction("typing");
+  await handleIncomingText(ctx, ctx.chat.id, fromId, ctx.message.text);
+});
 
+// Notas de voz (V6, ver plan) — se transcriben con el servicio whisper/ y de
+// ahí en más siguen exactamente el mismo camino que un mensaje de texto.
+bot.on("message:voice", async (ctx) => {
+  const fromId = String(ctx.from?.id ?? "");
+  if (!(await isOwner("telegram", fromId))) {
+    console.log(`[telegram] audio ignorado de ID no autorizado: ${fromId}`);
+    return;
+  }
+  if (!sttAvailable()) {
+    await ctx.reply("Todavía no tengo la transcripción de voz configurada.");
+    return;
+  }
+
+  await ctx.replyWithChatAction("typing");
   try {
-    // El router decide DIRECT/KNOWLEDGE/AGENT (ver brain/router.ts) — la sesión
-    // de Claude (sessionFor) solo se crea si el mensaje termina yendo a AGENT,
-    // así DIRECT/KNOWLEDGE no gastan cuota de Claude ni levantan el proceso.
-    // El ctx (userId/channel/externalId) es lo que necesita un recordatorio
-    // DIRECT (V5) para saber a quién avisar cuando dispare.
-    const userId = await getOwnerUserId(); // solo llega acá si isOwner ya dio true
-    const reply = await routeMessage(
-      ctx.message.text,
-      () => sessionFor(chatId).send(ctx.message.text),
-      userId ? { userId, channel: "telegram", externalId: fromId } : undefined,
-    );
-    for (const chunk of splitForTelegram(reply || "(sin respuesta)")) {
-      await ctx.reply(chunk);
+    const file = await ctx.getFile();
+    const url = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`descarga del audio falló: ${res.status}`);
+    const audio = Buffer.from(await res.arrayBuffer());
+    const text = await transcribeAudio(audio);
+    if (!text) {
+      await ctx.reply("No entendí el audio, ¿lo repetís?");
+      return;
     }
+    await handleIncomingText(ctx, ctx.chat.id, fromId, text, `🎙️ "${text}"\n\n`);
   } catch (err) {
-    console.error("[telegram] error procesando mensaje:", err);
-    await ctx.reply("Uh, tuve un error interno procesando eso. Ver logs del server.");
+    console.error("[telegram] error transcribiendo audio:", err);
+    await ctx.reply("No pude transcribir el audio. Ver logs del server.");
   }
 });
 

@@ -32,4 +32,8 @@ export const CHEAP_LLM_PROVIDER = (process.env.CHEAP_LLM_PROVIDER ?? "groq") as 
 export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? "";
 export const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
 
+// STT (V6, ver plan) — servicio HTTP interno de faster-whisper (whisper/).
+// Vacío = feature deshabilitada (el adapter avisa en vez de fallar).
+export const WHISPER_URL = process.env.WHISPER_URL ?? "";
+
 if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });
