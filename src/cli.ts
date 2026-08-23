@@ -1,5 +1,6 @@
 import * as readline from "node:readline";
-import { createBrainSession } from "./brain/session.ts";
+import { createBrainSession, type BrainSession } from "./brain/session.ts";
+import { routeMessage } from "./brain/router.ts";
 
 async function main() {
   const rl = readline.createInterface({
@@ -8,7 +9,12 @@ async function main() {
     prompt: "vos> ",
   });
 
-  const session = createBrainSession();
+  // Lazy: solo se crea si el router manda algo a AGENT (ver brain/router.ts).
+  let session: BrainSession | null = null;
+  function agentSession(): BrainSession {
+    if (!session) session = createBrainSession();
+    return session;
+  }
   let closed = false;
   rl.on("close", () => {
     closed = true;
@@ -27,7 +33,7 @@ async function main() {
       break;
     }
 
-    const reply = await session.send(trimmed);
+    const reply = await routeMessage(trimmed, () => agentSession().send(trimmed));
     if (reply) console.log(`\nRobin> ${reply}\n`);
     if (!closed) rl.prompt();
   }

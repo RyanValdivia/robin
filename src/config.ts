@@ -25,4 +25,11 @@ export const LLM_PROVIDER = (process.env.LLM_PROVIDER ?? "claude") as
 
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 
+// LLM barato para las ramas DIRECT/KNOWLEDGE del router (V4) — no toca la
+// cuota de Claude. Mismo patrón que LLM_PROVIDER: nombre configurable, no
+// hardcodeado a un proveedor.
+export const CHEAP_LLM_PROVIDER = (process.env.CHEAP_LLM_PROVIDER ?? "groq") as "groq";
+export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? "";
+export const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
+
 if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });

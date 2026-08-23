@@ -4,6 +4,7 @@ import { Bot } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "../../config.ts";
 import { isOwner } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
+import { routeMessage } from "../../brain/router.ts";
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error("[telegram] TELEGRAM_BOT_TOKEN no seteado en .env — no puedo arrancar.");
@@ -62,10 +63,12 @@ bot.on("message:text", async (ctx) => {
   }
 
   await ctx.replyWithChatAction("typing");
-  const session = sessionFor(chatId);
 
   try {
-    const reply = await session.send(ctx.message.text);
+    // El router decide DIRECT/KNOWLEDGE/AGENT (ver brain/router.ts) — la sesión
+    // de Claude (sessionFor) solo se crea si el mensaje termina yendo a AGENT,
+    // así DIRECT/KNOWLEDGE no gastan cuota de Claude ni levantan el proceso.
+    const reply = await routeMessage(ctx.message.text, () => sessionFor(chatId).send(ctx.message.text));
     for (const chunk of splitForTelegram(reply || "(sin respuesta)")) {
       await ctx.reply(chunk);
     }
