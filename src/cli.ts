@@ -1,60 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import * as fs from "node:fs";
 import * as readline from "node:readline";
-import { ROOT, MEMORY_INDEX, MEMORY_DIR } from "./config.ts";
-import { memoryMcpServer } from "./brain/tools.ts";
-import { buildMcpServers } from "./brain/mcp.ts";
-import { bashGuardHook } from "./brain/hooks.ts";
-
-function loadMemoryIndex(): string {
-  if (!fs.existsSync(MEMORY_INDEX)) {
-    fs.mkdirSync(MEMORY_DIR, { recursive: true });
-    fs.writeFileSync(
-      MEMORY_INDEX,
-      "# Memory Index\n\n## User\n\n## Projects\n\n## Infrastructure\n\n## Reference\n",
-    );
-  }
-  return fs.readFileSync(MEMORY_INDEX, "utf-8");
-}
-
-function buildSystemPrompt(): string {
-  return `Sos JARVIS, el asistente personal del usuario. Respondé en español, breve y directo.
-
-## Memoria
-- \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.
-- Para buscar algo que no está en el índice, usá la tool \`search_memory\` (combina
-  búsqueda exacta y semántica). Para leer una nota completa una vez que sabés su ruta,
-  usá Read.
-- Para guardar o actualizar algo, usá la tool \`remember\` — no escribas archivos en
-  \`memory/\` directo, así queda indexado para búsqueda semántica.
-- No inventes datos sobre el usuario. Si no sabés algo, preguntá.
-
-## Herramientas (rama AGENT)
-- Tenés Bash para tareas de shell/servidor. Hay un guardarraíl automático que bloquea
-  comandos destructivos (rm -rf, sudo, pipes a shell, etc.) — si algo te lo rechaza,
-  no insistas con variantes para esquivarlo, explicáselo al usuario.
-- Tenés un MCP de browser (Playwright) para navegar y extraer información de la web.
-- Si el MCP de GitHub está disponible, podés leer/operar sobre repos del usuario.
-
-## Índice actual (MEMORY.md)
-${loadMemoryIndex()}`;
-}
-
-async function* inputGenerator(rl: readline.Interface) {
-  for await (const line of rl) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.toLowerCase() === "salir" || trimmed.toLowerCase() === "exit") {
-      rl.close();
-      return;
-    }
-    yield {
-      type: "user" as const,
-      message: { role: "user" as const, content: trimmed },
-      parent_tool_use_id: null,
-    };
-  }
-}
+import { createBrainSession } from "./brain/session.ts";
 
 async function main() {
   const rl = readline.createInterface({
@@ -62,48 +7,32 @@ async function main() {
     output: process.stdout,
     prompt: "vos> ",
   });
+
+  const session = createBrainSession();
   let closed = false;
   rl.on("close", () => {
     closed = true;
   });
 
-  console.log("JARVIS V1 — CLI local + memory engine (Postgres/pgvector). Escribí 'salir' para terminar.\n");
+  console.log("JARVIS — CLI local. Escribí 'salir' para terminar.\n");
   rl.prompt();
 
-  const q = query({
-    prompt: inputGenerator(rl),
-    options: {
-      settingSources: [], // aislado: no hereda hooks/MCP/settings del usuario
-      strictMcpConfig: true,
-      mcpServers: { "jarvis-memory": memoryMcpServer, ...buildMcpServers() },
-      systemPrompt: buildSystemPrompt(),
-      // Read/Grep/Glob para mirar el vault libremente; Bash para AGENT (con hook);
-      // search_memory/remember/GitHub/Playwright son MCP.
-      tools: ["Read", "Grep", "Glob", "Bash"],
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [bashGuardHook] }] },
-      cwd: ROOT,
-    },
-  });
-
-  for await (const msg of q as AsyncGenerator<any>) {
-    if (msg.type === "assistant") {
-      // Un turno puede traer varios mensajes assistant intermedios (ej. uno
-      // solo con tool_use para llamar a search_memory, sin texto todavía).
-      // Solo imprimimos si hay texto; el prompt se reimprime recién en "result",
-      // que marca el turno realmente terminado.
-      const text = (msg.message?.content ?? [])
-        .filter((b: any) => b.type === "text")
-        .map((b: any) => b.text)
-        .join("");
-      if (text) console.log(`\nJARVIS> ${text}\n`);
-    } else if (msg.type === "result") {
-      if (msg.is_error) console.error(`\n[error] ${msg.subtype ?? "unknown"}\n`);
+  for await (const line of rl) {
+    const trimmed = line.trim();
+    if (!trimmed) {
       if (!closed) rl.prompt();
+      continue;
     }
+    if (trimmed.toLowerCase() === "salir" || trimmed.toLowerCase() === "exit") {
+      break;
+    }
+
+    const reply = await session.send(trimmed);
+    if (reply) console.log(`\nJARVIS> ${reply}\n`);
+    if (!closed) rl.prompt();
   }
 
+  if (!closed) rl.close();
   console.log("\nChau.");
   process.exit(0);
 }

@@ -23,4 +23,6 @@ export const LLM_PROVIDER = (process.env.LLM_PROVIDER ?? "claude") as
   | "claude"
   | "anthropic-api";
 
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
+
 if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });
