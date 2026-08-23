@@ -14,7 +14,7 @@ async function main() {
     closed = true;
   });
 
-  console.log("JARVIS — CLI local. Escribí 'salir' para terminar.\n");
+  console.log("Robin — CLI local. Escribí 'salir' para terminar.\n");
   rl.prompt();
 
   for await (const line of rl) {
@@ -28,7 +28,7 @@ async function main() {
     }
 
     const reply = await session.send(trimmed);
-    if (reply) console.log(`\nJARVIS> ${reply}\n`);
+    if (reply) console.log(`\nRobin> ${reply}\n`);
     if (!closed) rl.prompt();
   }
 

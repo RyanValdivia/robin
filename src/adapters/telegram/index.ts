@@ -42,6 +42,14 @@ function splitForTelegram(text: string): string[] {
   return chunks;
 }
 
+// /start es el mensaje automático que manda Telegram al abrir un chat nuevo con
+// el bot — respuesta fija, no lo mandamos al LLM (categoría DIRECT, sin costo).
+bot.command("start", async (ctx) => {
+  const fromId = String(ctx.from?.id ?? "");
+  if (!(await isOwner("telegram", fromId))) return;
+  await ctx.reply("Hola, soy Robin. Contame qué necesitás.");
+});
+
 bot.on("message:text", async (ctx) => {
   const chatId = ctx.chat.id;
   const fromId = String(ctx.from?.id ?? "");

@@ -21,7 +21,7 @@ export const bashGuardHook: HookCallback = async (input) => {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
-          permissionDecisionReason: `Bloqueado por denylist de JARVIS: ${reason}. Comando: ${command}`,
+          permissionDecisionReason: `Bloqueado por denylist de Robin: ${reason}. Comando: ${command}`,
         },
       };
     }

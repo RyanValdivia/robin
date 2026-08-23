@@ -13,7 +13,7 @@ function loadMemoryIndex(): string {
 }
 
 export function buildSystemPrompt(): string {
-  return `Sos JARVIS, el asistente personal del usuario. Respondé en español, breve y directo.
+  return `Sos Robin, el asistente personal del usuario. Respondé en español, breve y directo.
 
 ## Memoria
 - \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.

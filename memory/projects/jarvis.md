@@ -41,18 +41,19 @@ V2 (listo) — Tools: GitHub MCP (oficial, vía Docker, PAT fine-grained del usu
 Bash con `PreToolUse` hook denylist (rm -rf, sudo, pipe-a-shell, etc.), Playwright MCP
 (browser). Rama AGENT completa.
 
-V3 (en progreso) — Telegram + deploy 24/7 en el VPS.
-- Código listo: adapter de Telegram (grammy, long-polling), auth por
-  channel_identities, BrainSession compartida entre canales.
+V3 (probado local, falta VPS) — Telegram + deploy 24/7 en el VPS.
+- Código listo y VERIFICADO EN VIVO: adapter de Telegram (grammy, long-polling,
+  @robin_rv_bot), auth por channel_identities (owner: user_id=1, telegram
+  6945356724), BrainSession compartida entre canales. /start tiene respuesta
+  fija (no pasa por el LLM).
 - Dockerfile + docker-compose.prod.yml + DEPLOY.md listos, unido a la red
   externa `traefik_proxy` (ya corriendo en el VPS) sin labels activas todavía
   (Telegram no necesita puerto entrante).
-- Build verificado para linux/arm64 (arquitectura real del VPS) — build para
-  amd64 local falla porque onnxruntime-node pide un paquete CUDA de nuget que
-  arm64 no necesita; no es un problema real, es específico del build local en
-  otra arquitectura.
-- Pendiente: TELEGRAM_BOT_TOKEN y el ID de Telegram del usuario para probar en
-  vivo y recién ahí tocar el VPS real.
+- Build verificado para linux/arm64 (arquitectura real del VPS).
+- El asistente se presenta como **Robin** (nombre en código del repo sigue
+  siendo "jarvis").
+- Pendiente: deploy real en el VPS (correr los pasos de DEPLOY.md ahí, incluido
+  `claude setup-token`). Corriendo local en la PC del usuario por ahora, no 24/7.
 
 V3 — Telegram + deploy 24/7 en el VPS.
 
