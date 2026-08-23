@@ -69,7 +69,7 @@ V4 (LISTO, EN VIVO EN EL VPS) — Router híbrido por capacidad.
   `apt-get install ca-certificates`); regex `repo(sitorio)?` no matcheaba el
   plural "repos" (fix: `repos?(itorios?)?`).
 
-V5 (LISTO, EN VIVO EN EL VPS) — Proactividad: scheduler.
+V5 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Proactividad: scheduler.
 - `src/brain/scheduler.ts`: BullMQ sobre Redis + tabla `scheduled_tasks`
   (Postgres). El worker que dispara NO llama a Claude — solo lee el texto
   guardado y lo empuja por el outbound sender que registra el adapter
@@ -79,6 +79,13 @@ V5 (LISTO, EN VIVO EN EL VPS) — Proactividad: scheduler.
 - Tools para AGENT (`schedule_task`/`list_reminders`/`cancel_reminder`): para
   cuando la fecha/hora no es trivial de parsear — Claude la calcula una vez
   al crear, el disparo sigue sin tocarlo.
+- **Zona horaria:** router (DIRECT) y `systemPrompt` (AGENT) fuerzan
+  `America/Lima` (UTC-5 fijo, sin DST) para calcular/mostrar hora — el VPS
+  corre en UTC.
+- **Bug encontrado y arreglado en vivo:** `jobId: "task:${id}"` — BullMQ v6
+  rechaza `:` en jobId custom (`Custom Id cannot contain :`). Insertaba la
+  fila en Postgres pero `reminderQueue.add()` tiraba antes de encolar el
+  job — el recordatorio nunca disparaba. Fix: `"task-${id}"`.
 
 V6 — Voz: `faster-whisper` + Piper, local, sin APIs de pago.
 
