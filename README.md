@@ -6,16 +6,13 @@ AGENT vía Claude Agent SDK con GitHub/Bash/Browser), recordatorios proactivos,
 corriendo 24/7 en VPS propio, hoy por Telegram. Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V6 (STT) en curso, V0-V5 listas en el VPS
+## Estado: V6 listo, corriendo 24/7 en el VPS
 
-- **V0-V5 listas**: CLI local, memoria persistente, Bash con guardarraíl,
+- **V0-V6 listas**: CLI local, memoria persistente, Bash con guardarraíl,
   Playwright MCP, GitHub MCP, Telegram (`@robin_rv_bot`), router híbrido por
   capacidad, recordatorios proactivos (scheduler que no depende de Claude
-  para disparar).
-- **V6 (voz, en curso)**: notas de voz por Telegram se transcriben con
-  faster-whisper (`whisper/`, servicio Python aparte, HTTP interno) y siguen
-  el mismo camino que un mensaje de texto. Solo STT por ahora — sin
-  respuestas en audio (TTS/Piper, evaluar después si hace falta).
+  para disparar), notas de voz transcriptas con faster-whisper (`whisper/`,
+  servicio Python aparte) — solo STT, sin respuestas en audio por ahora.
 - Siguiente: V7 — más canales (Discord, WhatsApp, Web UI).
 
 ## Desarrollo local

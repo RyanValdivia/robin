@@ -87,8 +87,9 @@ V5 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Proactividad: scheduler.
   fila en Postgres pero `reminderQueue.add()` tiraba antes de encolar el
   job — el recordatorio nunca disparaba. Fix: `"task-${id}"`.
 
-V6 (EN CURSO) — Voz: solo STT por ahora (decisión: alcance recortado a
-transcribir, sin TTS/Piper — menos infra, cubre el caso de uso principal).
+V6 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Voz: solo STT por ahora (decisión:
+alcance recortado a transcribir, sin TTS/Piper — menos infra, cubre el caso de
+uso principal).
 - `whisper/`: servicio Python aparte (faster-whisper/ctranslate2) con un
   wrapper HTTP mínimo (FastAPI) — expone `POST /transcribe` (bytes de audio
   crudos) → `{text, language}`. Separado del proceso Node del brain porque
@@ -103,10 +104,14 @@ transcribir, sin TTS/Piper — menos infra, cubre el caso de uso principal).
   cualquier mensaje de texto — cero código nuevo en el router/DIRECT/
   KNOWLEDGE/AGENT. La respuesta muestra la transcripción arriba (🎙️) para
   que el usuario pueda notar si Whisper entendió mal algo.
-- **Pendiente de verificar en vivo (riesgo anotado en el plan desde el
-  principio):** que `ctranslate2`/`faster-whisper` con `compute_type=int8`
-  ande bien en ARM (Ampere A1, Neoverse-N1) — si falla, primer fallback es
-  `compute_type=int8_float32` o `float32` en `whisper/server.py`.
+- **Riesgo ARM anotado en el plan desde el principio, verificado OK en
+  vivo:** `ctranslate2`/`faster-whisper` con `compute_type=int8` corre bien
+  en el VPS (Ampere A1, Neoverse-N1) — no hizo falta el fallback a
+  `int8_float32`/`float32`.
+- **Bug encontrado y arreglado en el deploy:** `faster-whisper==1.0.3` usa
+  `requests` pero no lo declara como dependencia propia — `pip install`
+  del `requirements.txt` original no lo traía, `ModuleNotFoundError` al
+  arrancar. Fix: agregado `requests` explícito a `whisper/requirements.txt`.
 
 V7 — Más canales: Discord, WhatsApp (Baileys), Web UI.
 
