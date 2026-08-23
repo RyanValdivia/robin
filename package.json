@@ -17,6 +17,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.240",
     "@huggingface/transformers": "^4.2.0",
+    "bullmq": "^6.2.0",
     "grammy": "^1.45.1",
     "ioredis": "^6.0.0",
     "pg": "^8.23.0",

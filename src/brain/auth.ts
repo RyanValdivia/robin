@@ -12,3 +12,9 @@ export async function isOwner(channel: string, externalId: string): Promise<bool
   );
   return rows.length > 0 && rows[0].is_owner === true;
 }
+
+/** id de users del dueño — simplificación válida mientras solo hay un owner (ver plan, Seguridad). */
+export async function getOwnerUserId(): Promise<number | null> {
+  const { rows } = await pool.query(`SELECT id FROM users WHERE is_owner = true ORDER BY id LIMIT 1`);
+  return rows[0]?.id ?? null;
+}

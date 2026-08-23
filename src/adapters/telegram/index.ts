@@ -2,9 +2,10 @@
 // Sin lógica de LLM acá (ver plan, arquitectura: Event Gateway).
 import { Bot } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "../../config.ts";
-import { isOwner } from "../../brain/auth.ts";
+import { isOwner, getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
 import { routeMessage } from "../../brain/router.ts";
+import { registerOutboundSender, startSchedulerWorker } from "../../brain/scheduler.ts";
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error("[telegram] TELEGRAM_BOT_TOKEN no seteado en .env — no puedo arrancar.");
@@ -68,7 +69,14 @@ bot.on("message:text", async (ctx) => {
     // El router decide DIRECT/KNOWLEDGE/AGENT (ver brain/router.ts) — la sesión
     // de Claude (sessionFor) solo se crea si el mensaje termina yendo a AGENT,
     // así DIRECT/KNOWLEDGE no gastan cuota de Claude ni levantan el proceso.
-    const reply = await routeMessage(ctx.message.text, () => sessionFor(chatId).send(ctx.message.text));
+    // El ctx (userId/channel/externalId) es lo que necesita un recordatorio
+    // DIRECT (V5) para saber a quién avisar cuando dispare.
+    const userId = await getOwnerUserId(); // solo llega acá si isOwner ya dio true
+    const reply = await routeMessage(
+      ctx.message.text,
+      () => sessionFor(chatId).send(ctx.message.text),
+      userId ? { userId, channel: "telegram", externalId: fromId } : undefined,
+    );
     for (const chunk of splitForTelegram(reply || "(sin respuesta)")) {
       await ctx.reply(chunk);
     }
@@ -81,6 +89,17 @@ bot.on("message:text", async (ctx) => {
 bot.catch((err) => {
   console.error("[telegram] error no manejado:", err);
 });
+
+// El scheduler (V5) empuja acá cuando dispara un recordatorio — no depende de
+// Claude ni de que haya una sesión de chat abierta en ese momento.
+registerOutboundSender(async (channel, externalId, text) => {
+  if (channel !== "telegram") {
+    console.warn(`[telegram] outbound sender ignoró canal desconocido: ${channel}`);
+    return;
+  }
+  await bot.api.sendMessage(Number(externalId), text);
+});
+startSchedulerWorker();
 
 console.log("[telegram] arrancando (long polling)...");
 bot.start({

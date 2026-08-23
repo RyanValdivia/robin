@@ -13,7 +13,18 @@ function loadMemoryIndex(): string {
 }
 
 export function buildSystemPrompt(): string {
+  const now = new Date();
   return `Sos Robin, el asistente personal del usuario. Respondé en español, breve y directo.
+
+Fecha/hora actual: ${now.toISOString()} (servidor).
+
+## Recordatorios
+- Tenés \`schedule_task\` para programar un recordatorio que se manda solo cuando llega
+  la hora (vos no seguís corriendo en ese momento) — necesita el texto y la fecha/hora en
+  ISO 8601, calculala vos a partir de la fecha/hora actual de arriba.
+- \`list_reminders\` / \`cancel_reminder\` para ver o cancelar los pendientes.
+- Recordatorios simples ("recordame X a las 8") ya los resuelve el router antes de
+  llegar a vos — si te llega uno acá es porque la fecha/hora no era trivial de parsear.
 
 ## Memoria
 - \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.

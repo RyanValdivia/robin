@@ -6,12 +6,25 @@
 // no dejar al usuario sin respuesta).
 import { searchMemory } from "./memory.ts";
 import { chatComplete, cheapLlmAvailable } from "./cheapLLM.ts";
+import { scheduleReminder } from "./scheduler.ts";
 
 export type Category = "direct" | "knowledge" | "agent";
+
+/** Contexto del canal que llama — lo necesita el recordatorio DIRECT (V5) para saber a quién avisar. */
+export type RouteContext = { userId: number; channel: string; externalId: string };
 
 const GREETING_RE = /^(hola|holi|buenas|hey|buen[oa]s?\s*(d[ií]as?|tardes|noches))[\s!.,]*$/i;
 const TIME_RE = /\bqu[eé]\s*(hora|d[ií]a|fecha)\s*(es|era|tenemos)?\b/i;
 const CALC_RE = /^[\s\d+\-*/().]+$/;
+
+// "Recordame comprar leche a las 8" / "recordame en 20 minutos estirar". Solo el
+// patrón simple y sin ambigüedad — cualquier otra forma cae a AGENT (Claude calcula
+// la fecha/hora con la tool schedule_task, ver brain/tools.ts).
+const REMINDER_VERB = /recordame|recu[eé]rdame|agendame/i;
+const REMINDER_AT_RE =
+  /^(?:recordame|recu[eé]rdame|agendame)\s+(.+?)\s+(mañana\s+)?a\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\.?$/i;
+const REMINDER_IN_RE =
+  /^(?:recordame|recu[eé]rdame|agendame)\s+(.+?)\s+en\s+(\d+)\s*(minutos?|min|horas?|hs?)\.?$/i;
 
 const AGENT_RE =
   /\b(github|pull request|\bpr\b|repos?(itorios?)?|bash|comando|terminal|servidor|deploy|despleg|docker|browser|navegador|p[aá]gina web|internet|busca(r|me)?\s+en\s+(la\s+)?(web|internet)|screenshot|captura)\b/i;
@@ -21,6 +34,8 @@ const KNOWLEDGE_RE =
 
 function classifyHeuristic(text: string): Category | null {
   const t = text.trim();
+  if (REMINDER_AT_RE.test(t) || REMINDER_IN_RE.test(t)) return "direct";
+  if (REMINDER_VERB.test(t)) return "agent"; // recordatorio con fecha/hora no trivial -> Claude la calcula
   if (GREETING_RE.test(t)) return "direct";
   if (TIME_RE.test(t)) return "direct";
   if (CALC_RE.test(t) && /\d/.test(t)) return "direct";
@@ -59,9 +74,49 @@ export async function classify(text: string): Promise<Category> {
   return classifyWithCheapLlm(text);
 }
 
-/** Maneja DIRECT sin ningún LLM. Devuelve null si en realidad no puede resolverlo (cae a AGENT). */
-function handleDirect(text: string): string | null {
+function nextOccurrence(hour: number, minute: number, forceTomorrow: boolean): Date {
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  if (forceTomorrow || d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+/** Intenta armar un recordatorio DIRECT (sin LLM). null si no aplica o falta contexto de canal. */
+async function tryScheduleDirectReminder(text: string, ctx?: RouteContext): Promise<string | null> {
+  if (!ctx) return null;
   const t = text.trim();
+
+  const at = REMINDER_AT_RE.exec(t);
+  if (at) {
+    const [, body, tomorrow, hourStr, minStr, ampm] = at;
+    let hour = parseInt(hourStr, 10);
+    const minute = minStr ? parseInt(minStr, 10) : 0;
+    if (ampm?.toLowerCase() === "pm" && hour < 12) hour += 12;
+    if (ampm?.toLowerCase() === "am" && hour === 12) hour = 0;
+    if (hour > 23 || minute > 59) return null;
+    const when = nextOccurrence(hour, minute, Boolean(tomorrow));
+    await scheduleReminder(ctx.userId, ctx.channel, ctx.externalId, body.trim(), when);
+    return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-ES")}.`;
+  }
+
+  const inMatch = REMINDER_IN_RE.exec(t);
+  if (inMatch) {
+    const [, body, amountStr, unit] = inMatch;
+    const amount = parseInt(amountStr, 10);
+    const ms = /hora|hs/i.test(unit) ? amount * 3_600_000 : amount * 60_000;
+    const when = new Date(Date.now() + ms);
+    await scheduleReminder(ctx.userId, ctx.channel, ctx.externalId, body.trim(), when);
+    return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-ES")}.`;
+  }
+
+  return null;
+}
+
+/** Maneja DIRECT sin LLM (salvo recordatorios, que solo necesitan Postgres/Redis). null si no puede resolverlo (cae a AGENT). */
+async function handleDirect(text: string, ctx?: RouteContext): Promise<string | null> {
+  const t = text.trim();
+  const reminder = await tryScheduleDirectReminder(t, ctx);
+  if (reminder) return reminder;
   if (GREETING_RE.test(t)) return "Hola! Contame qué necesitás.";
   if (TIME_RE.test(t)) {
     const now = new Date();
@@ -105,14 +160,19 @@ async function handleKnowledge(text: string): Promise<string | null> {
 
 /**
  * Punto de entrada del router. `sendToAgent` es lo que ejecuta la rama AGENT
- * (Claude + tools) — el router no sabe nada de sesiones ni de canales, eso
- * sigue viviendo en cada adapter/BrainSession.
+ * (Claude + tools) — el router no sabe nada de sesiones, eso sigue viviendo en
+ * cada adapter/BrainSession. `ctx` (opcional) es el canal que llama — sin él,
+ * los recordatorios DIRECT no tienen a quién avisar y caen a AGENT.
  */
-export async function routeMessage(text: string, sendToAgent: () => Promise<string>): Promise<string> {
+export async function routeMessage(
+  text: string,
+  sendToAgent: () => Promise<string>,
+  ctx?: RouteContext,
+): Promise<string> {
   const category = await classify(text);
 
   if (category === "direct") {
-    const reply = handleDirect(text);
+    const reply = await handleDirect(text, ctx);
     if (reply !== null) return reply;
   }
 
