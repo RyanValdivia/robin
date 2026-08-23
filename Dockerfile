@@ -11,6 +11,13 @@ FROM node:24-slim
 
 WORKDIR /app
 
+# node:24-slim no trae certificados CA — Node los tiene compilados adentro,
+# pero el binario Go de github-mcp-server valida TLS contra /etc/ssl/certs del
+# sistema, que sin este paquete no existe (x509: certificate signed by unknown
+# authority contra api.github.com).
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghmcp /server/github-mcp-server /usr/local/bin/github-mcp-server
 ENV GITHUB_MCP_BIN=/usr/local/bin/github-mcp-server
 
