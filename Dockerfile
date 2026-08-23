@@ -1,9 +1,18 @@
+# Binario del GitHub MCP server oficial, copiado de su imagen (distroless) en
+# vez de invocarlo con `docker run` en runtime — el contenedor de jarvis no
+# tiene (ni debería tener) acceso al socket de Docker del host. Multi-arch,
+# resuelve a la variante correcta (arm64 en el VPS) sola.
+FROM ghcr.io/github/github-mcp-server AS ghmcp
+
 # Imagen multi-arch oficial de Node — cubre linux/arm64 (VPS Oracle Ampere A1) y
 # linux/amd64 sin cambios. Corremos con tsx directo (sin build step) para no
 # complicar el Dockerfile con un paso de compilación TS que no aporta acá.
 FROM node:24-slim
 
 WORKDIR /app
+
+COPY --from=ghmcp /server/github-mcp-server /usr/local/bin/github-mcp-server
+ENV GITHUB_MCP_BIN=/usr/local/bin/github-mcp-server
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
