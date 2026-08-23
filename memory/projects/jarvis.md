@@ -41,21 +41,33 @@ V2 (listo) — Tools: GitHub MCP (oficial, vía Docker, PAT fine-grained del usu
 Bash con `PreToolUse` hook denylist (rm -rf, sudo, pipe-a-shell, etc.), Playwright MCP
 (browser). Rama AGENT completa.
 
-V3 (probado local, falta VPS) — Telegram + deploy 24/7 en el VPS.
-- Código listo y VERIFICADO EN VIVO: adapter de Telegram (grammy, long-polling,
-  @robin_rv_bot), auth por channel_identities (owner: user_id=1, telegram
-  6945356724), BrainSession compartida entre canales. /start tiene respuesta
-  fija (no pasa por el LLM).
-- Dockerfile + docker-compose.prod.yml + DEPLOY.md listos, unido a la red
-  externa `traefik_proxy` (ya corriendo en el VPS) sin labels activas todavía
-  (Telegram no necesita puerto entrante).
-- Build verificado para linux/arm64 (arquitectura real del VPS).
-- El asistente se presenta como **Robin** (nombre en código del repo sigue
-  siendo "jarvis").
-- Pendiente: deploy real en el VPS (correr los pasos de DEPLOY.md ahí, incluido
-  `claude setup-token`). Corriendo local en la PC del usuario por ahora, no 24/7.
-
-V3 — Telegram + deploy 24/7 en el VPS.
+V3 (LISTO, EN VIVO EN EL VPS) — Telegram + deploy 24/7.
+- Corriendo 24/7 en el VPS real (Oracle Ampere A1, `rvaldiviase-instance`),
+  código en `~/server-data/jarvis` (mismo patrón que los demás servicios del
+  VPS). Verificado en vivo desde Telegram real, no solo local.
+- Deploy hecho por `git archive | ssh ... tar -x` (no hay remoto de GitHub
+  para este repo todavía) en vez de `git clone` como decía DEPLOY.md.
+- `.env.prod`: `POSTGRES_PASSWORD` random (openssl), tokens de Telegram/GitHub
+  copiados del `.env` local, `CLAUDE_CODE_OAUTH_TOKEN` generado corriendo
+  `claude setup-token` en un contenedor `node:24-slim` descartable en el VPS
+  (no hace falta instalar node en el host).
+- **Bug encontrado y arreglado en el deploy:** el contenedor corría como root
+  (Dockerfile no tenía `USER`) y el Agent SDK manda `--dangerously-skip-permissions`
+  (por `bypassPermissions`) — la CLI de Claude Code rechaza ese flag como root
+  ("cannot be used with root/sudo privileges"), tiraba el proceso entero
+  (`process_exited_nonzero`) y el contenedor entraba en crash-loop cada vez que
+  llegaba un mensaje. Fix: `Dockerfile` crea user `jarvis` uid/gid 1001 (mismo
+  uid que el usuario `ubuntu` del host, para que el bind mount `./memory` tenga
+  permisos de escritura correctos) y corre con `USER jarvis`.
+- Owner de Telegram bootstrapped en la DB del VPS (user_id=1, telegram
+  6945356724, mismo que local).
+- `docker compose -f docker-compose.prod.yml ps` → postgres/redis/jarvis los
+  3 `Up`, `restart: unless-stopped`. Logs: `[telegram] listo — @robin_rv_bot`.
+- Pendiente (no bloqueante): log rotation de Docker no configurada todavía en
+  el VPS (`/etc/docker/daemon.json` no existe) — ver plan, sección Seguridad
+  → higiene de disco. VPS tenía 21GB libres de 45GB antes de este deploy
+  (bastante ya usado por los otros ~25 servicios que corren ahí: Pterodactyl,
+  Turiston, registrame, Vaultwarden, Evolution API, Headscale, etc.)
 
 V4 — Router híbrido por capacidad, LLM barato (Groq/Gemini) para DIRECT/KNOWLEDGE.
 

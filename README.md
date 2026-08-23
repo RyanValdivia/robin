@@ -4,13 +4,13 @@ Asistente personal con Claude (nombre en código del proyecto/repo: `jarvis`, el
 asistente se presenta como **Robin**). Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V3 en progreso
+## Estado: V3 listo, corriendo 24/7 en el VPS
 
-- **V0-V2 listas**: CLI local, memoria persistente (vault markdown + Postgres +
-  pgvector para búsqueda semántica), Bash con guardarraíl, Playwright MCP, GitHub MCP.
-- **V3 en progreso**: adapter de Telegram (`src/adapters/telegram`), deploy artifacts
-  (`Dockerfile`, `docker-compose.prod.yml`, `DEPLOY.md`) para el VPS — código listo,
-  falta la primera prueba en vivo.
+- **V0-V3 listas**: CLI local, memoria persistente (vault markdown + Postgres +
+  pgvector para búsqueda semántica), Bash con guardarraíl, Playwright MCP, GitHub MCP,
+  Telegram (`@robin_rv_bot`) desplegado y corriendo 24/7 en el VPS propio.
+- Siguiente: V4 — router híbrido por capacidad + LLM barato (Groq/Gemini) para
+  DIRECT/KNOWLEDGE.
 
 ## Desarrollo local
 

@@ -17,4 +17,12 @@ COPY db ./db
 # docker-compose.prod.yml) — lo que se copia acá es solo el estado inicial
 # para el primer arranque si el volumen viene vacío.
 
+# Correr como no-root: el Agent SDK usa --dangerously-skip-permissions
+# (bypassPermissions), que la CLI de Claude Code rechaza si el proceso es root.
+# uid/gid 1001 para que coincida con el owner del bind mount ./memory en el
+# host (usuario `ubuntu` del VPS) y no haya problemas de permisos de escritura.
+RUN groupadd -g 1001 jarvis && useradd -u 1001 -g jarvis -m jarvis \
+    && chown -R jarvis:jarvis /app
+USER jarvis
+
 CMD ["npx", "tsx", "src/adapters/telegram/index.ts"]
