@@ -29,13 +29,15 @@ correr 24/7 en el VPS propio del usuario (Oracle Cloud Ampere A1: 4 vCPU ARM, 23
 
 ## Roadmap
 
-V0 (acá estamos) — CLI local, Claude Agent SDK, memory tools (Read/Write/Edit) sobre
-este vault, sin Postgres/Redis/Docker todavía.
+V0 (listo) — CLI local, Claude Agent SDK, memory tools sobre este vault.
 
-V1 — Memory Engine: Postgres+Redis+pgvector, `search_memory()`/`remember()`/
-`update_memory()` reales.
+V1 (acá estamos, listo) — Memory Engine: Postgres+Redis vía Docker Compose,
+`search_memory()`/`remember()` reales como MCP tools propios (`jarvis-memory`).
+Embeddings 100% locales (`@huggingface/transformers`, sin API paga). El agente ya no
+escribe archivos directo en `memory/` — todo pasa por `remember()` para que el índice
+semántico nunca quede desincronizado.
 
-V2 — Tools: GitHub MCP, Bash+hooks, Playwright MCP.
+V2 (próximo) — Tools: GitHub MCP, Bash+hooks, Playwright MCP.
 
 V3 — Telegram + deploy 24/7 en el VPS.
 

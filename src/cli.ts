@@ -76,14 +76,17 @@ async function main() {
 
   for await (const msg of q as AsyncGenerator<any>) {
     if (msg.type === "assistant") {
+      // Un turno puede traer varios mensajes assistant intermedios (ej. uno
+      // solo con tool_use para llamar a search_memory, sin texto todavía).
+      // Solo imprimimos si hay texto; el prompt se reimprime recién en "result",
+      // que marca el turno realmente terminado.
       const text = (msg.message?.content ?? [])
         .filter((b: any) => b.type === "text")
         .map((b: any) => b.text)
         .join("");
       if (text) console.log(`\nJARVIS> ${text}\n`);
-      if (!rl.closed) rl.prompt();
-    } else if (msg.type === "result" && msg.is_error) {
-      console.error(`\n[error] ${msg.subtype ?? "unknown"}\n`);
+    } else if (msg.type === "result") {
+      if (msg.is_error) console.error(`\n[error] ${msg.subtype ?? "unknown"}\n`);
       if (!rl.closed) rl.prompt();
     }
   }
