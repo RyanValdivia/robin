@@ -66,6 +66,17 @@ Si el cambio fue en `whisper/` (STT, V6), rebuildear ese servicio en vez de
 docker compose -f docker-compose.prod.yml up -d --build whisper
 ```
 
+Si el cambio fue en `src/adapters/web/` (Web UI, V7), rebuildear `web`
+(misma imagen que `robin`, `command` distinto):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build web
+```
+
+La Web UI queda publicada en `https://robin.rvaldiviase.com`, detrás del
+middleware `tinyauth` de Traefik — mismo login que ya usás para
+homarr/portainer, nada que configurar de nuevo.
+
 ## Vault (`memory/`)
 
 Vive montado como volumen (`./memory:/app/memory`), no dentro de la imagen —

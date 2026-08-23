@@ -113,7 +113,27 @@ uso principal).
   del `requirements.txt` original no lo traía, `ModuleNotFoundError` al
   arrancar. Fix: agregado `requests` explícito a `whisper/requirements.txt`.
 
-V7 — Más canales: Discord, WhatsApp (Baileys), Web UI.
+V7 (EN CURSO) — Más canales: arrancó por Web UI (Discord/WhatsApp quedan
+después). Decisión: `robin.rvaldiviase.com`, protegido por el middleware
+`tinyauth` (forward-auth de Traefik) que ya usaba el usuario para
+homarr/portainer/dashboard de Traefik — cero código de auth propio en Robin,
+mismo login que ya conoce.
+- `src/adapters/web/`: `index.ts` (Express: `POST /api/message` → mismo
+  `routeMessage()` que Telegram) + `public/index.html` (chat vanilla JS, sin
+  build step, sin dependencias externas — mismo espíritu minimalista que el
+  resto del proyecto).
+- **Corre como servicio Docker aparte del de Telegram** (misma imagen,
+  `command` distinto) — a propósito: `startSchedulerWorker()` solo lo llama
+  el proceso de Telegram, así nunca hay ambigüedad de qué proceso tiene el
+  outbound sender registrado cuando dispara un recordatorio. El proceso web
+  puede encolar recordatorios (`scheduleReminder` vía DIRECT/AGENT) pero no
+  corre el worker que los dispara.
+- **Límite conocido, documentado a propósito:** recordatorios creados desde
+  la Web UI no se entregan ahí (no hay push a browser) — solo por Telegram
+  por ahora. Aceptable para v1.
+- Sesión de Claude (AGENT) es un solo hilo compartido para todo el canal web
+  (no hay noción de "chats" distintos como en Telegram) — mismo patrón que
+  el CLI.
 
 ## Rename jarvis → robin (proyecto completo)
 

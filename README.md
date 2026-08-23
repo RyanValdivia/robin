@@ -6,14 +6,18 @@ AGENT vía Claude Agent SDK con GitHub/Bash/Browser), recordatorios proactivos,
 corriendo 24/7 en VPS propio, hoy por Telegram. Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V6 listo, corriendo 24/7 en el VPS
+## Estado: V7 (Web UI) en curso, V0-V6 listas en el VPS
 
 - **V0-V6 listas**: CLI local, memoria persistente, Bash con guardarraíl,
   Playwright MCP, GitHub MCP, Telegram (`@robin_rv_bot`), router híbrido por
   capacidad, recordatorios proactivos (scheduler que no depende de Claude
   para disparar), notas de voz transcriptas con faster-whisper (`whisper/`,
   servicio Python aparte) — solo STT, sin respuestas en audio por ahora.
-- Siguiente: V7 — más canales (Discord, WhatsApp, Web UI).
+- **V7 (Web UI, en curso)**: chat propio (`src/adapters/web/`), mismo
+  `routeMessage()` que Telegram. Sin auth propia — en prod queda detrás del
+  middleware `tinyauth` de Traefik (mismo gate que el resto de servicios
+  admin del VPS). Corre como proceso/servicio Docker aparte del de Telegram.
+- Siguiente: Discord, WhatsApp (Baileys) — resto de V7.
 
 ## Desarrollo local
 
@@ -39,6 +43,6 @@ Ver `DEPLOY.md`.
   (memoria, tools, hooks, MCP).
 - `src/brain/systemPrompt.ts` — persona ("Robin") + memoria inyectada al contexto.
 - `src/brain/memory.ts` — `search_memory()`/`remember()` (grep + pgvector).
-- `src/adapters/` — canales (CLI, Telegram, ...), thin, sin lógica de LLM.
+- `src/adapters/` — canales (CLI, Telegram, Web, ...), thin, sin lógica de LLM.
 - `memory/` — vault de conocimiento (fuente de verdad). Editable a mano (Obsidian
   compatible) o por Robin mismo cuando le pedís que recuerde algo.

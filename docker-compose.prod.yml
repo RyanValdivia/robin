@@ -1,8 +1,9 @@
 # Deploy en el VPS. Postgres/Redis SOLO en red interna (sin puertos publicados
 # al host) — ver plan, sección Seguridad. `traefik_proxy` es la red externa de
-# tu Traefik ya corriendo; no la usa ningún servicio todavía (Telegram es
-# long-polling, no necesita puerto entrante) pero queda lista para cuando
-# sumemos algo que sí lo necesite (Web UI en V7, o Telegram en modo webhook).
+# tu Traefik ya corriendo; el servicio `robin` (Telegram, long-polling) no la
+# necesita para entrar pero queda conectado por si hace falta salir; `web`
+# (V7) sí la usa para publicar la Web UI, detrás del mismo middleware
+# tinyauth que ya protege tus otros servicios admin (homarr, portainer, etc.).
 #
 # Variables (POSTGRES_PASSWORD, etc.) vienen de .env.prod — ver .env.prod.example.
 name: robin
@@ -62,6 +63,40 @@ services:
       - robin_internal
     security_opt:
       - no-new-privileges:true
+
+  # Web UI (V7, ver plan) — misma imagen que `robin`, `command` distinto.
+  # Proceso aparte a propósito: así solo el de Telegram corre el Worker del
+  # scheduler (brain/scheduler.ts) y no hay ambigüedad de qué proceso tiene
+  # el outbound sender registrado. Sin auth propia — tinyauth (Traefik) es el
+  # gate real; ver comentario en src/adapters/web/index.ts.
+  web:
+    build: .
+    restart: unless-stopped
+    command: ["npx", "tsx", "src/adapters/web/index.ts"]
+    env_file:
+      - .env.prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - robin_internal
+      - traefik_proxy
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.robin-web-https-redirect.redirectscheme.permanent=true"
+      - "traefik.http.middlewares.robin-web-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.robin-web-http.entrypoints=web"
+      - "traefik.http.routers.robin-web-http.middlewares=robin-web-https-redirect"
+      - "traefik.http.routers.robin-web-http.rule=Host(`robin.rvaldiviase.com`)"
+      - "traefik.http.routers.robin-web-https.entrypoints=websecure"
+      - "traefik.http.routers.robin-web-https.middlewares=tinyauth"
+      - "traefik.http.routers.robin-web-https.rule=Host(`robin.rvaldiviase.com`)"
+      - "traefik.http.routers.robin-web-https.tls=true"
+      - "traefik.http.routers.robin-web-https.tls.certresolver=cloudflare"
+      - "traefik.http.services.robin-web-https.loadbalancer.server.port=3000"
 
 networks:
   robin_internal:
