@@ -44,7 +44,8 @@ export async function scheduleReminder(
   );
   const id = rows[0].id as number;
   const delay = Math.max(0, runAt.getTime() - Date.now());
-  await reminderQueue.add("reminder", { taskId: id }, { delay, jobId: `task:${id}` });
+  // BullMQ v6 rechaza ":" en jobId custom ("Custom Id cannot contain :") -> "-".
+  await reminderQueue.add("reminder", { taskId: id }, { delay, jobId: `task-${id}` });
   return id;
 }
 
@@ -55,7 +56,7 @@ export async function cancelReminder(userId: number, taskId: number): Promise<bo
     [taskId, userId],
   );
   if (rows.length === 0) return false;
-  await reminderQueue.remove(`task:${taskId}`);
+  await reminderQueue.remove(`task-${taskId}`);
   return true;
 }
 
