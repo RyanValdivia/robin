@@ -53,6 +53,8 @@ function synthesizeToOgg(text) {
     ]);
 
     piper.stdout.pipe(ffmpeg.stdin);
+    piper.stdin.write(text);
+    piper.stdin.end();
 
     let piperErr = "";
     let ffmpegErr = "";
