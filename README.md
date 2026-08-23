@@ -1,16 +1,17 @@
 # Robin
 
-Asistente personal con Claude (nombre en código del proyecto/repo: `jarvis`, el
-asistente se presenta como **Robin**). Arquitectura completa en
+Asistente personal con Claude (nombre en código interno del repo/infra: `jarvis`
+— carpeta, DB, Docker; el proyecto se llama y se presenta como **Robin**).
+Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V3 listo, corriendo 24/7 en el VPS
+## Estado: V4 listo, corriendo 24/7 en el VPS
 
-- **V0-V3 listas**: CLI local, memoria persistente (vault markdown + Postgres +
+- **V0-V4 listas**: CLI local, memoria persistente (vault markdown + Postgres +
   pgvector para búsqueda semántica), Bash con guardarraíl, Playwright MCP, GitHub MCP,
-  Telegram (`@robin_rv_bot`) desplegado y corriendo 24/7 en el VPS propio.
-- Siguiente: V4 — router híbrido por capacidad + LLM barato (Groq/Gemini) para
-  DIRECT/KNOWLEDGE.
+  Telegram (`@robin_rv_bot`) desplegado y corriendo 24/7 en el VPS propio, router
+  híbrido por capacidad (DIRECT sin LLM / KNOWLEDGE vía Groq / AGENT vía Claude).
+- Siguiente: V5 — proactividad (scheduler, no depende de Claude para disparar).
 
 ## Desarrollo local
 

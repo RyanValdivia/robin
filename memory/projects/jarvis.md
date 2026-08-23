@@ -1,10 +1,13 @@
 ---
 type: project
-name: JARVIS
+name: Robin
 description: Asistente personal con Claude — arquitectura y decisiones de diseño
 ---
 
-# JARVIS
+# Robin
+
+(Nombre en código interno del repo/infra: `jarvis` — carpeta, DB, contenedores
+Docker. El proyecto/producto se llama y se presenta como **Robin**.)
 
 Asistente personal **reactivo** (actúa cuando se le pide, no autónomo), pensado para
 correr 24/7 en el VPS propio del usuario (Oracle Cloud Ampere A1: 4 vCPU ARM, 23GB RAM,
@@ -69,7 +72,27 @@ V3 (LISTO, EN VIVO EN EL VPS) — Telegram + deploy 24/7.
   (bastante ya usado por los otros ~25 servicios que corren ahí: Pterodactyl,
   Turiston, registrame, Vaultwarden, Evolution API, Headscale, etc.)
 
-V4 — Router híbrido por capacidad, LLM barato (Groq/Gemini) para DIRECT/KNOWLEDGE.
+V4 (LISTO, EN VIVO EN EL VPS) — Router híbrido por capacidad.
+- `src/brain/router.ts`: heurística de keywords primero (gratis, sin red) →
+  cae a LLM barato (Groq) si es ambigua → cae a AGENT (Claude) si no hay LLM
+  barato configurado o algo falla. Nunca se pierde una respuesta por costo.
+- DIRECT (saludo, hora/fecha, calculadora): cero LLM. AGENT/BrainSession de
+  Claude ahora es **lazy** en ambos adapters (CLI y Telegram) — solo se crea
+  si el router manda algo a AGENT.
+- KNOWLEDGE: `search_memory()` + Groq (`openai/gpt-oss-20b`, gratis, no
+  `llama-3.3-70b-versatile` que ya no existe en su catálogo) sintetiza la
+  respuesta — no toca cuota de Claude.
+- Verificado en vivo por Telegram: "342 + 34" → 376 sin LLM; "qué sabés de
+  mis proyectos" → contestado por Groq.
+- **Bug encontrado en vivo:** GitHub MCP se invocaba con `docker run ...`
+  (`src/brain/mcp.ts`), pero el contenedor de `jarvis` no tiene el socket de
+  Docker del host — fallaba en silencio, Claude decía no tener acceso a
+  GitHub. Local funcionaba porque el host (Windows) sí tiene Docker Desktop.
+  Fix: Dockerfile multi-stage copia el binario distroless
+  (`ghcr.io/github/github-mcp-server` → `/usr/local/bin/github-mcp-server`)
+  directo a la imagen; `mcp.ts` lo detecta vía env `GITHUB_MCP_BIN` y lo
+  corre sin Docker de por medio (dev local sin esa var sigue usando
+  `docker run` como antes). Deployado, pendiente re-probar en vivo.
 
 V5 — Proactividad: scheduler (BullMQ), no depende de Claude para funcionar.
 
