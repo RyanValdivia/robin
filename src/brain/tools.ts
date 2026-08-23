@@ -4,27 +4,8 @@
 import { z } from "zod";
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { remember, searchMemory } from "./memory.ts";
-import { pool } from "../db.ts";
-import { getOwnerUserId } from "./auth.ts";
+import { getOwnerUserId, resolveOwnerChannel } from "./auth.ts";
 import { scheduleReminder, cancelReminder, listPendingReminders } from "./scheduler.ts";
-
-/**
- * A qué canal empujar cuando dispare una tarea creada por acá (rama AGENT).
- * Simplificación válida mientras hay un solo dueño con un solo canal
- * registrado (ver plan, Seguridad) — la sesión de Claude no lleva contexto
- * de qué chat la invocó, a diferencia del router (ver brain/router.ts), que
- * sí lo tiene y arma recordatorios DIRECT sin pasar por acá.
- */
-async function resolveOwnerChannel(): Promise<{ userId: number; channel: string; externalId: string } | null> {
-  const userId = await getOwnerUserId();
-  if (!userId) return null;
-  const { rows } = await pool.query(
-    `SELECT channel, external_id FROM channel_identities WHERE user_id = $1 ORDER BY (channel = 'telegram') DESC LIMIT 1`,
-    [userId],
-  );
-  if (rows.length === 0) return null;
-  return { userId, channel: rows[0].channel, externalId: rows[0].external_id };
-}
 
 const searchMemoryTool = tool(
   "search_memory",

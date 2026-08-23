@@ -32,6 +32,13 @@ function extractText(msg: any): string {
 export type BrainSession = {
   /** Manda un mensaje y espera la respuesta completa del turno (incluye tool calls intermedios). */
   send: (text: string) => Promise<string>;
+  /**
+   * Corta el loop de prompts y deja que el proceso de Claude Code atrás
+   * termine. Las sesiones por chat (Telegram/Web/CLI) viven todo el proceso
+   * y no la necesitan — es para sesiones de un solo uso (ver
+   * brain/proactive.ts) que si no, quedan corriendo para siempre.
+   */
+  close: () => void;
 };
 
 export function createBrainSession(): BrainSession {
@@ -40,10 +47,11 @@ export function createBrainSession(): BrainSession {
   // través de closures — con un `let` bare, TS termina infiriendo `never` acá.
   const waker: { fn: (() => void) | null } = { fn: null };
   const pending: { resolve: ((text: string) => void) | null } = { resolve: null };
+  const state: { closed: boolean } = { closed: false };
   let buffer = "";
 
   async function* promptGenerator() {
-    while (true) {
+    while (!state.closed) {
       if (queue.length > 0) {
         yield queue.shift();
       } else {
@@ -88,5 +96,14 @@ export function createBrainSession(): BrainSession {
     });
   }
 
-  return { send };
+  function close(): void {
+    state.closed = true;
+    if (waker.fn) {
+      const w = waker.fn;
+      waker.fn = null;
+      w(); // despierta el generator para que reevalúe `!state.closed` y termine
+    }
+  }
+
+  return { send, close };
 }

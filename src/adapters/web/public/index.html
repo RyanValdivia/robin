@@ -147,6 +147,56 @@
     </div>
   </main>
 
+  <!-- USO -->
+  <main x-show="tab === 'usage'" x-cloak class="flex-1 overflow-y-auto px-6 py-6">
+    <div class="max-w-2xl mx-auto">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-base font-semibold text-white">Uso del router</h2>
+        <button @click="loadUsage()" class="text-xs text-muted hover:text-gray-200">↻ actualizar</button>
+      </div>
+
+      <!-- stat tiles -->
+      <div class="grid grid-cols-3 gap-3 mb-7">
+        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+          <div class="text-xs text-muted mb-1">Mensajes totales</div>
+          <div class="text-2xl font-semibold text-white" x-text="totalMessages"></div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+          <div class="text-xs text-muted mb-1">Sin tocar a Claude</div>
+          <div class="text-2xl font-semibold text-white" x-text="freePercent + '%'"></div>
+        </div>
+        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+          <div class="text-xs text-muted mb-1">Tokens Groq</div>
+          <div class="text-2xl font-semibold text-white" x-text="formatNumber(usage.groqAll.promptTokens + usage.groqAll.completionTokens)"></div>
+        </div>
+      </div>
+
+      <!-- barras por categoria -->
+      <div class="bg-panel border border-border rounded-xl px-5 py-5 mb-4">
+        <div class="text-xs text-muted mb-4">Mensajes por rama del router (histórico)</div>
+        <template x-for="c in categories" :key="c.id">
+          <div class="mb-4 last:mb-0" :title="categoryCount30d(c.id) + ' en los últimos 30 días'">
+            <div class="flex justify-between text-sm mb-1.5">
+              <span class="text-gray-300" x-text="c.label"></span>
+              <span class="text-gray-400 tabular-nums" x-text="categoryCount(c.id)"></span>
+            </div>
+            <div class="h-3 bg-panel2 rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all"
+                :style="`width:${barWidth(c.id)}%; background:${c.color}`"
+              ></div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <p class="text-xs text-muted">
+        DIRECT y CONOCIMIENTO no gastan cuota de Claude (DIRECT ni siquiera usa un LLM;
+        CONOCIMIENTO usa Groq, gratis). Solo AGENTE toca la suscripción de Claude.
+      </p>
+    </div>
+  </main>
+
 <script src="/vendor/alpine.min.js" defer></script>
 <script>
 function escapeHtml(s) {
@@ -185,6 +235,7 @@ function robinApp() {
       { id: "chat", label: "Chat" },
       { id: "memory", label: "Memoria" },
       { id: "reminders", label: "Recordatorios" },
+      { id: "usage", label: "Uso" },
     ],
 
     // chat
@@ -200,11 +251,26 @@ function robinApp() {
     // recordatorios
     reminders: [],
 
+    // uso
+    categories: [
+      { id: "direct", label: "Directo (sin LLM)", color: "#3987e5" },
+      { id: "knowledge", label: "Conocimiento (Groq)", color: "#d95926" },
+      { id: "agent", label: "Agente (Claude)", color: "#199e70" },
+    ],
+    usage: {
+      messagesAll: [],
+      messages30d: [],
+      groqAll: { calls: 0, promptTokens: 0, completionTokens: 0 },
+      groq30d: { calls: 0, promptTokens: 0, completionTokens: 0 },
+    },
+
     init() {
       this.loadMemory();
       this.loadReminders();
+      this.loadUsage();
       this.$watch("tab", (t) => {
         if (t === "reminders") this.loadReminders();
+        if (t === "usage") this.loadUsage();
       });
     },
 
@@ -247,6 +313,44 @@ function robinApp() {
       } catch (e) {
         console.error(e);
       }
+    },
+
+    async loadUsage() {
+      try {
+        const res = await fetch("/api/usage");
+        const data = await res.json();
+        this.usage = {
+          messagesAll: data.messagesAll || [],
+          messages30d: data.messages30d || [],
+          groqAll: data.groqAll || { calls: 0, promptTokens: 0, completionTokens: 0 },
+          groq30d: data.groq30d || { calls: 0, promptTokens: 0, completionTokens: 0 },
+        };
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    categoryCount(id) {
+      return this.usage.messagesAll.find((m) => m.category === id)?.count ?? 0;
+    },
+    categoryCount30d(id) {
+      return this.usage.messages30d.find((m) => m.category === id)?.count ?? 0;
+    },
+    get totalMessages() {
+      return this.usage.messagesAll.reduce((sum, m) => sum + m.count, 0);
+    },
+    get freePercent() {
+      const total = this.totalMessages;
+      if (total === 0) return 0;
+      const free = this.categoryCount("direct") + this.categoryCount("knowledge");
+      return Math.round((free / total) * 100);
+    },
+    barWidth(id) {
+      const max = Math.max(1, ...this.categories.map((c) => this.categoryCount(c.id)));
+      return (this.categoryCount(id) / max) * 100;
+    },
+    formatNumber(n) {
+      return new Intl.NumberFormat("es-PE").format(n);
     },
 
     async cancel(id) {

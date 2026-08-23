@@ -2,6 +2,7 @@
 // cuota de Claude. Interfaz mínima (chatComplete), implementación intercambiable
 // por CHEAP_LLM_PROVIDER igual que LLM_PROVIDER en config.ts.
 import { CHEAP_LLM_PROVIDER, GROQ_API_KEY, GROQ_MODEL } from "../config.ts";
+import { logGroqUsage } from "./usage.ts";
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -30,6 +31,10 @@ export async function chatComplete(messages: ChatMessage[]): Promise<string> {
   if (!res.ok) {
     throw new Error(`Groq respondió ${res.status}: ${await res.text()}`);
   }
-  const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
+  const data = (await res.json()) as {
+    choices: Array<{ message: { content: string } }>;
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+  if (data.usage) logGroqUsage(data.usage.prompt_tokens, data.usage.completion_tokens);
   return data.choices[0]?.message?.content?.trim() ?? "";
 }

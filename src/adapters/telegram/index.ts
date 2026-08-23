@@ -6,6 +6,7 @@ import { isOwner, getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
 import { routeMessage } from "../../brain/router.ts";
 import { registerOutboundSender, startSchedulerWorker } from "../../brain/scheduler.ts";
+import { startProactiveWorker, registerProactiveJobs } from "../../brain/proactive.ts";
 import { sttAvailable, transcribeAudio } from "../../brain/stt.ts";
 
 if (!TELEGRAM_BOT_TOKEN) {
@@ -145,6 +146,11 @@ registerOutboundSender(async (channel, externalId, text) => {
   await bot.api.sendMessage(Number(externalId), text);
 });
 startSchedulerWorker();
+
+// Resumen proactivo diario/semanal (ver brain/proactive.ts) — mismo proceso,
+// reusa el outbound sender de arriba.
+startProactiveWorker();
+await registerProactiveJobs();
 
 console.log("[telegram] arrancando (long polling)...");
 bot.start({

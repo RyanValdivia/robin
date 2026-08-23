@@ -55,6 +55,24 @@ CREATE TABLE IF NOT EXISTS tool_audit_log (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Uso/costos (para el dashboard de la Web UI, ver plan V7) — mensajes por
+-- rama del router (DIRECT/KNOWLEDGE/AGENT) y tokens gastados en el LLM
+-- barato (Groq). No es un audit log completo, solo lo mínimo para mostrar
+-- que el router de hecho ahorra cuota de Claude.
+CREATE TABLE IF NOT EXISTS message_log (
+  id          SERIAL PRIMARY KEY,
+  category    TEXT NOT NULL,   -- 'direct' | 'knowledge' | 'agent'
+  channel     TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS groq_usage_log (
+  id                 SERIAL PRIMARY KEY,
+  prompt_tokens      INTEGER NOT NULL,
+  completion_tokens  INTEGER NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Índice semántico sobre el vault de markdown (memory/). NO es la fuente de
 -- verdad — se reconstruye desde los archivos. document_path es relativo a memory/.
 CREATE TABLE IF NOT EXISTS memory_embeddings (

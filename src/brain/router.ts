@@ -7,6 +7,7 @@
 import { searchMemory } from "./memory.ts";
 import { chatComplete, cheapLlmAvailable } from "./cheapLLM.ts";
 import { scheduleReminder } from "./scheduler.ts";
+import { logMessage } from "./usage.ts";
 
 export type Category = "direct" | "knowledge" | "agent";
 
@@ -190,6 +191,7 @@ export async function routeMessage(
   ctx?: RouteContext,
 ): Promise<string> {
   const category = await classify(text);
+  logMessage(category, ctx?.channel); // para el dashboard de uso (Web UI) - no bloquea la respuesta
 
   if (category === "direct") {
     const reply = await handleDirect(text, ctx);

@@ -23,6 +23,7 @@ import { createBrainSession, type BrainSession } from "../../brain/session.ts";
 import { routeMessage } from "../../brain/router.ts";
 import { listNotes, readNote } from "../../brain/memory.ts";
 import { listPendingReminders, cancelReminder } from "../../brain/scheduler.ts";
+import { getMessageStats, getGroqStats } from "../../brain/usage.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -116,6 +117,23 @@ app.post("/api/reminders/:id/cancel", async (req, res) => {
   } catch (err) {
     console.error("[web] error cancelando recordatorio:", err);
     res.status(500).json({ error: "no pude cancelar el recordatorio" });
+  }
+});
+
+// Uso/costos (V7) — para el dashboard: mensajes por rama del router
+// (histórico + últimos 30 días) y tokens de Groq gastados.
+app.get("/api/usage", async (_req, res) => {
+  try {
+    const [messagesAll, messages30d, groqAll, groq30d] = await Promise.all([
+      getMessageStats(),
+      getMessageStats(30),
+      getGroqStats(),
+      getGroqStats(30),
+    ]);
+    res.json({ messagesAll, messages30d, groqAll, groq30d });
+  } catch (err) {
+    console.error("[web] error leyendo uso:", err);
+    res.status(500).json({ error: "no pude leer las estadísticas de uso" });
   }
 });
 

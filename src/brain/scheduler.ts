@@ -28,6 +28,11 @@ export function registerOutboundSender(fn: OutboundSender): void {
   sender = fn;
 }
 
+/** El sender ya registrado — lo reusa brain/proactive.ts para el resumen diario/semanal. */
+export function getOutboundSender(): OutboundSender | null {
+  return sender;
+}
+
 /** Programa un recordatorio simple — sin LLM, ni al crear (llamado por el router DIRECT) ni al disparar. */
 export async function scheduleReminder(
   userId: number,
