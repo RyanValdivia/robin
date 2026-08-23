@@ -156,6 +156,31 @@ referenciados como `external: true` apuntando al nombre viejo
 (`jarvis_jarvis_pg_data`/`jarvis_jarvis_redis_data`) para no tener que copiar
 datos — es un detalle interno invisible, no afecta nada de lo que se ve/usa.
 
+## Higiene de disco del VPS (todo el host, no solo Robin)
+
+Pendiente del plan desde el principio, cobrado en el deploy de V7 (build de
+`web` falló por `ENOSPC`, disco al 100%/45GB — `docker builder prune -af` +
+`docker image prune -af` liberaron ~35GB sin tocar volúmenes).
+
+- `/etc/docker/daemon.json`: `log-driver: json-file`, `max-size: 10m`,
+  `max-file: 3` (tope ~30MB/contenedor). Aplicado con
+  `sudo systemctl restart docker` — **esto reinicia TODOS los contenedores
+  del host** (no solo Robin), confirmado con el usuario antes de hacerlo.
+  Solo afecta contenedores nuevos/recreados desde que se aplicó — los que ya
+  estaban corriendo mantienen su config vieja hasta que se recrean (se
+  recreó Robin ahí mismo; el resto de los servicios del VPS lo toman en su
+  próximo redeploy natural).
+- **Efecto colateral encontrado y arreglado:** `stirling-pdf` (no es de
+  Robin) no tenía restart policy (`RestartPolicy: no`) — no volvió solo
+  después del restart del daemon. Se hizo `docker start stirling-pdf`
+  manualmente. Nada que ver con el log rotation en sí, gap preexistente de
+  ese servicio.
+- Cron (`crontab -l` del usuario `ubuntu`, no root): domingos 4am,
+  `docker image prune -af --filter "until=168h"` +
+  `docker builder prune -af --filter "until=168h"` (solo imágenes/cache sin
+  uso de más de 7 días — no toca volúmenes, no toca contenedores corriendo).
+  Output a `~/docker-prune.log`.
+
 ## Plan completo
 
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`
