@@ -39,19 +39,19 @@
   .prose-note strong { color: #fff; font-weight: 600; }
 </style>
 </head>
-<body x-data="robinApp()" x-init="init()" class="h-screen bg-bg text-gray-200 font-sans flex flex-col overflow-hidden">
+<body x-data="robinApp()" x-init="init()" class="h-dvh bg-bg text-gray-200 font-sans flex flex-col overflow-hidden">
 
   <!-- Header / tabs -->
-  <header class="flex items-center gap-4 px-5 py-3 border-b border-border shrink-0">
-    <div class="flex items-center gap-2">
+  <header class="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 border-b border-border shrink-0">
+    <div class="flex items-center gap-2 shrink-0">
       <span class="w-2.5 h-2.5 rounded-full bg-green-400"></span>
       <h1 class="text-sm font-semibold text-white">Robin</h1>
     </div>
-    <nav class="flex gap-1 ml-2">
+    <nav class="flex gap-1 overflow-x-auto">
       <template x-for="t in tabs" :key="t.id">
         <button
           @click="tab = t.id"
-          class="px-3 py-1.5 rounded-lg text-sm transition"
+          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-sm transition whitespace-nowrap shrink-0"
           :class="tab === t.id ? 'bg-panel2 text-white' : 'text-muted hover:text-gray-200'"
           x-text="t.label"
         ></button>
@@ -61,7 +61,7 @@
 
   <!-- CHAT -->
   <main x-show="tab === 'chat'" x-cloak class="flex-1 flex flex-col overflow-hidden">
-    <div id="log" x-ref="log" class="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-3 max-w-3xl w-full mx-auto">
+    <div id="log" x-ref="log" class="flex-1 overflow-y-auto px-3 sm:px-5 py-5 flex flex-col gap-3 max-w-3xl w-full mx-auto">
       <template x-for="(m, i) in messages" :key="i">
         <div
           class="max-w-[80%] px-3.5 py-2.5 rounded-2xl text-[14.5px] leading-relaxed whitespace-pre-wrap break-words"
@@ -82,7 +82,7 @@
         </div>
       </template>
     </div>
-    <form @submit.prevent="send()" class="border-t border-border px-5 py-3.5 flex gap-2.5 max-w-3xl w-full mx-auto shrink-0">
+    <form @submit.prevent="send()" class="border-t border-border px-3 sm:px-5 py-3 flex gap-2 sm:gap-2.5 max-w-3xl w-full mx-auto shrink-0">
       <textarea
         x-ref="input"
         x-model="draft"
@@ -96,16 +96,16 @@
         type="button"
         @click="toggleRecording()"
         :class="recording ? 'bg-red-500 animate-pulse' : 'bg-panel2 hover:bg-panel2/70'"
-        class="rounded-xl px-3.5 text-sm shrink-0"
+        class="rounded-xl px-3 text-sm shrink-0"
         :title="recording ? 'Grabando... click para mandar' : 'Grabar nota de voz'"
       >🎙️</button>
-      <button type="submit" :disabled="sending" class="bg-accent disabled:opacity-50 text-bg font-semibold rounded-xl px-4 text-sm">Enviar</button>
+      <button type="submit" :disabled="sending" class="bg-accent disabled:opacity-50 text-bg font-semibold rounded-xl px-3 sm:px-4 text-sm shrink-0">Enviar</button>
     </form>
   </main>
 
   <!-- MEMORIA -->
-  <main x-show="tab === 'memory'" x-cloak class="flex-1 overflow-hidden flex">
-    <aside class="w-72 border-r border-border overflow-y-auto shrink-0">
+  <main x-show="tab === 'memory'" x-cloak class="flex-1 overflow-hidden flex flex-col md:flex-row">
+    <aside class="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-border overflow-y-auto shrink-0">
       <template x-for="group in memoryGroups" :key="group.type">
         <div class="px-4 pt-4">
           <div class="text-xs uppercase tracking-wide text-muted mb-1.5" x-text="group.type"></div>
@@ -123,7 +123,7 @@
       </template>
       <div x-show="notes.length === 0" class="px-4 py-6 text-sm text-muted">Vault vacío.</div>
     </aside>
-    <div class="flex-1 overflow-y-auto px-8 py-6">
+    <div class="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
       <template x-if="!selectedNote">
         <div class="text-muted text-sm">Elegí una nota de la izquierda.</div>
       </template>
@@ -138,7 +138,7 @@
   </main>
 
   <!-- RECORDATORIOS -->
-  <main x-show="tab === 'reminders'" x-cloak class="flex-1 overflow-y-auto px-6 py-6">
+  <main x-show="tab === 'reminders'" x-cloak class="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
     <div class="max-w-2xl mx-auto">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-semibold text-white">Recordatorios pendientes</h2>
@@ -163,7 +163,7 @@
   </main>
 
   <!-- USO -->
-  <main x-show="tab === 'usage'" x-cloak class="flex-1 overflow-y-auto px-6 py-6">
+  <main x-show="tab === 'usage'" x-cloak class="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
     <div class="max-w-2xl mx-auto">
       <div class="flex items-center justify-between mb-5">
         <h2 class="text-base font-semibold text-white">Uso del router</h2>
@@ -172,17 +172,17 @@
 
       <!-- stat tiles -->
       <div class="grid grid-cols-3 gap-3 mb-7">
-        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+        <div class="bg-panel border border-border rounded-xl px-2.5 sm:px-4 py-3.5">
           <div class="text-xs text-muted mb-1">Mensajes totales</div>
-          <div class="text-2xl font-semibold text-white" x-text="totalMessages"></div>
+          <div class="text-lg sm:text-2xl font-semibold text-white" x-text="totalMessages"></div>
         </div>
-        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+        <div class="bg-panel border border-border rounded-xl px-2.5 sm:px-4 py-3.5">
           <div class="text-xs text-muted mb-1">Sin tocar a Claude</div>
-          <div class="text-2xl font-semibold text-white" x-text="freePercent + '%'"></div>
+          <div class="text-lg sm:text-2xl font-semibold text-white" x-text="freePercent + '%'"></div>
         </div>
-        <div class="bg-panel border border-border rounded-xl px-4 py-3.5">
+        <div class="bg-panel border border-border rounded-xl px-2.5 sm:px-4 py-3.5">
           <div class="text-xs text-muted mb-1">Tokens Groq</div>
-          <div class="text-2xl font-semibold text-white" x-text="formatNumber(usage.groqAll.promptTokens + usage.groqAll.completionTokens)"></div>
+          <div class="text-lg sm:text-2xl font-semibold text-white" x-text="formatNumber(usage.groqAll.promptTokens + usage.groqAll.completionTokens)"></div>
         </div>
       </div>
 
