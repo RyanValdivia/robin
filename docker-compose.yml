@@ -37,7 +37,18 @@ services:
     volumes:
       - whisper_model:/models
 
+  # TTS (V6, ver plan) — Piper como servicio HTTP aparte, mismo motivo que
+  # whisper (el brain corre en el host en dev, no en Docker).
+  piper:
+    build: ./piper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - piper_voices:/voices
+
 volumes:
   pg_data:
   redis_data:
   whisper_model:
+  piper_voices:

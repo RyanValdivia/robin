@@ -36,6 +36,10 @@ export const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
 // Vacío = feature deshabilitada (el adapter avisa en vez de fallar).
 export const WHISPER_URL = process.env.WHISPER_URL ?? "";
 
+// TTS (V6, ver plan) — servicio HTTP interno de Piper (piper/). Vacío =
+// feature deshabilitada (el adapter simplemente no manda nota de voz).
+export const PIPER_URL = process.env.PIPER_URL ?? "";
+
 // Web UI (V7, ver plan) — puerto del servidor Express. Sin auth propia acá:
 // en prod queda detrás del middleware tinyauth de Traefik (ver
 // docker-compose.prod.yml y src/adapters/web/index.ts).

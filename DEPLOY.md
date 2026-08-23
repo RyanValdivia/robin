@@ -59,11 +59,12 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build robin
 ```
 
-Si el cambio fue en `whisper/` (STT, V6), rebuildear ese servicio en vez de
-(o además de) `robin`:
+Si el cambio fue en `whisper/` (STT, V6) o `piper/` (TTS, V6), rebuildear ese
+servicio en vez de (o además de) `robin`:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build whisper
+docker compose -f docker-compose.prod.yml up -d --build piper
 ```
 
 Si el cambio fue en `src/adapters/web/` (Web UI, V7), rebuildear `web`

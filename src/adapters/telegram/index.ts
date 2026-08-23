@@ -1,6 +1,6 @@
 // Telegram adapter — thin: normaliza mensajes, valida owner, delega al brain.
 // Sin lógica de LLM acá (ver plan, arquitectura: Event Gateway).
-import { Bot, type Context } from "grammy";
+import { Bot, InputFile, type Context } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "../../config.ts";
 import { isOwner, getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
@@ -8,6 +8,7 @@ import { routeMessage } from "../../brain/router.ts";
 import { registerOutboundSender, startSchedulerWorker } from "../../brain/scheduler.ts";
 import { startProactiveWorker, registerProactiveJobs } from "../../brain/proactive.ts";
 import { sttAvailable, transcribeAudio } from "../../brain/stt.ts";
+import { ttsAvailable, synthesizeSpeech } from "../../brain/tts.ts";
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error("[telegram] TELEGRAM_BOT_TOKEN no seteado en .env — no puedo arrancar.");
@@ -56,14 +57,17 @@ bot.command("start", async (ctx) => {
 
 // Compartido por texto y voz (transcripta) — el router no distingue de dónde
 // vino el texto. `prefix` es para mostrar la transcripción antes de la
-// respuesta cuando el mensaje vino de un audio.
+// respuesta cuando el mensaje vino de un audio. `speak`: además de texto,
+// mandar la respuesta como nota de voz (TTS, V6) — solo tiene sentido cuando
+// la entrada también fue voz, no forzamos audio en una conversación tipeada.
 async function handleIncomingText(
   ctx: Context,
   chatId: number,
   fromId: string,
   text: string,
-  prefix = "",
+  opts: { prefix?: string; speak?: boolean } = {},
 ): Promise<void> {
+  const { prefix = "", speak = false } = opts;
   await ctx.replyWithChatAction("typing");
   try {
     // El router decide DIRECT/KNOWLEDGE/AGENT (ver brain/router.ts) — la sesión
@@ -80,6 +84,16 @@ async function handleIncomingText(
     const full = prefix + (reply || "(sin respuesta)");
     for (const chunk of splitForTelegram(full)) {
       await ctx.reply(chunk);
+    }
+    if (speak && reply && ttsAvailable()) {
+      try {
+        const audio = await synthesizeSpeech(reply);
+        await ctx.replyWithVoice(new InputFile(audio));
+      } catch (err) {
+        // No molesta al usuario con un error de un bonus que ni pidió — ya
+        // tiene la respuesta en texto arriba.
+        console.error("[telegram] error generando nota de voz:", err);
+      }
     }
   } catch (err) {
     console.error("[telegram] error procesando mensaje:", err);
@@ -125,7 +139,7 @@ bot.on("message:voice", async (ctx) => {
       await ctx.reply("No entendí el audio, ¿lo repetís?");
       return;
     }
-    await handleIncomingText(ctx, ctx.chat.id, fromId, text, `🎙️ "${text}"\n\n`);
+    await handleIncomingText(ctx, ctx.chat.id, fromId, text, { prefix: `🎙️ "${text}"\n\n`, speak: true });
   } catch (err) {
     console.error("[telegram] error transcribiendo audio:", err);
     await ctx.reply("No pude transcribir el audio. Ver logs del server.");
