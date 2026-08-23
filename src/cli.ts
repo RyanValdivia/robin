@@ -1,11 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as readline from "node:readline";
-
-const ROOT = process.cwd();
-const MEMORY_DIR = path.join(ROOT, "memory");
-const MEMORY_INDEX = path.join(MEMORY_DIR, "MEMORY.md");
+import { ROOT, MEMORY_INDEX, MEMORY_DIR } from "./config.ts";
+import { memoryMcpServer } from "./brain/tools.ts";
 
 function loadMemoryIndex(): string {
   if (!fs.existsSync(MEMORY_INDEX)) {
@@ -21,14 +18,13 @@ function loadMemoryIndex(): string {
 function buildSystemPrompt(): string {
   return `Sos JARVIS, el asistente personal del usuario. Respondé en español, breve y directo.
 
-## Memoria (vault en memory/)
-- \`memory/MEMORY.md\` es el índice — mapa de qué notas existen, no su contenido completo.
-- Cuando necesites el detalle de una nota, usá Read/Grep/Glob sobre \`memory/\` (esto es
-  tu \`search_memory\` por ahora, versión V1: búsqueda exacta/grep).
-- Cuando el usuario te pida recordar algo, escribí o actualizá una nota en
-  \`memory/<categoria>/<archivo>.md\` (categorías: user, projects, infrastructure,
-  reference) con frontmatter \`type\`/\`name\`/\`description\`, y actualizá
-  \`memory/MEMORY.md\` para listarla. Sé conciso, una nota por hecho/tema.
+## Memoria
+- \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.
+- Para buscar algo que no está en el índice, usá la tool \`search_memory\` (combina
+  búsqueda exacta y semántica). Para leer una nota completa una vez que sabés su ruta,
+  usá Read.
+- Para guardar o actualizar algo, usá la tool \`remember\` — no escribas archivos en
+  \`memory/\` directo, así queda indexado para búsqueda semántica.
 - No inventes datos sobre el usuario. Si no sabés algo, preguntá.
 
 ## Índice actual (MEMORY.md)
@@ -58,7 +54,7 @@ async function main() {
     prompt: "vos> ",
   });
 
-  console.log("JARVIS V0 — CLI local. Escribí 'salir' para terminar.\n");
+  console.log("JARVIS V1 — CLI local + memory engine (Postgres/pgvector). Escribí 'salir' para terminar.\n");
   rl.prompt();
 
   const q = query({
@@ -66,11 +62,12 @@ async function main() {
     options: {
       settingSources: [], // aislado: no hereda hooks/MCP/settings del usuario
       strictMcpConfig: true,
-      mcpServers: {},
+      mcpServers: { "jarvis-memory": memoryMcpServer },
       systemPrompt: buildSystemPrompt(),
-      tools: ["Read", "Write", "Edit", "Grep", "Glob"],
-      // V0: sin Bash/red, solo file tools sobre el vault — bypass es razonable acá.
-      // Se reintroduce control fino (PreToolUse hooks) cuando entre Bash en V2.
+      // Read/Grep/Glob para que el agente pueda mirar el vault libremente;
+      // search_memory/remember (MCP) son el camino estructurado.
+      tools: ["Read", "Grep", "Glob"],
+      allowedTools: ["mcp__jarvis-memory__search_memory", "mcp__jarvis-memory__remember"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       cwd: ROOT,
@@ -92,6 +89,7 @@ async function main() {
   }
 
   console.log("\nChau.");
+  process.exit(0);
 }
 
 main().catch((err) => {
