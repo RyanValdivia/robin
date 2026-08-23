@@ -149,3 +149,36 @@ export async function reindexAll(): Promise<number> {
   for (const f of files) await indexNote(f);
   return files.length;
 }
+
+function parseFrontmatter(content: string): { type: string; name: string; description: string } {
+  const m = content.match(/^---\n([\s\S]*?)\n---/);
+  const meta: Record<string, string> = {};
+  if (m) {
+    for (const line of m[1].split("\n")) {
+      const idx = line.indexOf(":");
+      if (idx === -1) continue;
+      meta[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    }
+  }
+  return { type: meta.type ?? "", name: meta.name ?? "", description: meta.description ?? "" };
+}
+
+export type NoteEntry = { path: string; type: string; name: string; description: string };
+
+/** Lista todas las notas del vault con su metadata (frontmatter) — para la Web UI (V7). */
+export function listNotes(): NoteEntry[] {
+  return listNoteFiles().map((rel) => {
+    const content = fs.readFileSync(path.join(MEMORY_DIR, rel), "utf-8");
+    return { path: rel, ...parseFrontmatter(content) };
+  });
+}
+
+/**
+ * Lee el contenido (sin frontmatter) de una nota del vault, para la Web UI (V7).
+ * null si el path no es una nota real del vault — previene path traversal, solo
+ * se puede leer lo que `listNoteFiles()` ya enumeró.
+ */
+export function readNote(relativePath: string): string | null {
+  if (!listNoteFiles().includes(relativePath)) return null;
+  return stripFrontmatter(fs.readFileSync(path.join(MEMORY_DIR, relativePath), "utf-8"));
+}

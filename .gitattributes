@@ -1,0 +1,3 @@
+# Librerías de terceros vendoreadas tal cual se bajaron — sin conversión de
+# fin de línea, para que queden byte-idénticas al build oficial.
+src/adapters/web/public/vendor/* -text

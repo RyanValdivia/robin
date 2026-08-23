@@ -4,211 +4,303 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Robin</title>
+<script src="/vendor/tailwind.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: "#0f1115",
+          panel: "#171a21",
+          panel2: "#1c2029",
+          border: "#262b36",
+          muted: "#8a8f9c",
+          accent: "#6ea8fe",
+        },
+      },
+    },
+  };
+</script>
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #262b36;
-    --text: #e6e8ec;
-    --muted: #8a8f9c;
-    --accent: #6ea8fe;
-    --bubble-user: #2a3550;
-    --bubble-bot: #1c2029;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  }
-  body {
-    display: flex;
-    flex-direction: column;
-  }
-  header {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  }
-  header .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #4ade80;
-    flex-shrink: 0;
-  }
-  header h1 {
-    font-size: 15px;
-    font-weight: 600;
-    margin: 0;
-  }
-  header span.sub {
-    font-size: 12px;
-    color: var(--muted);
-  }
-  #log {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-width: 760px;
-    width: 100%;
-    margin: 0 auto;
-  }
-  .msg {
-    max-width: 80%;
-    padding: 10px 14px;
-    border-radius: 14px;
-    line-height: 1.45;
-    font-size: 14.5px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  .msg.user {
-    align-self: flex-end;
-    background: var(--bubble-user);
-    border-bottom-right-radius: 4px;
-  }
-  .msg.bot {
-    align-self: flex-start;
-    background: var(--bubble-bot);
-    border: 1px solid var(--border);
-    border-bottom-left-radius: 4px;
-  }
-  .msg.error {
-    border-color: #7f2d3a;
-    color: #ff9fae;
-  }
-  .msg.typing {
-    color: var(--muted);
-    font-style: italic;
-  }
-  form {
-    border-top: 1px solid var(--border);
-    padding: 14px 20px;
-    display: flex;
-    gap: 10px;
-    max-width: 760px;
-    width: 100%;
-    margin: 0 auto;
-    flex-shrink: 0;
-  }
-  textarea {
-    flex: 1;
-    resize: none;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    padding: 10px 12px;
-    font-size: 14.5px;
-    font-family: inherit;
-    max-height: 140px;
-  }
-  textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  button {
-    background: var(--accent);
-    border: none;
-    border-radius: 10px;
-    padding: 0 18px;
-    color: #0f1115;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
+  [x-cloak] { display: none !important; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 4px; }
+  .prose-note :is(h1,h2,h3) { font-weight: 600; margin: 1em 0 0.4em; color: #fff; }
+  .prose-note h1 { font-size: 1.25rem; }
+  .prose-note h2 { font-size: 1.1rem; }
+  .prose-note h3 { font-size: 1rem; }
+  .prose-note p { margin: 0.5em 0; line-height: 1.6; }
+  .prose-note ul { margin: 0.5em 0; padding-left: 1.3em; list-style: disc; }
+  .prose-note li { margin: 0.2em 0; line-height: 1.55; }
+  .prose-note code { background: #10131a; border: 1px solid #262b36; border-radius: 4px; padding: 0.1em 0.4em; font-size: 0.85em; }
+  .prose-note pre { background: #10131a; border: 1px solid #262b36; border-radius: 8px; padding: 0.8em; overflow-x: auto; margin: 0.6em 0; }
+  .prose-note pre code { border: none; padding: 0; }
+  .prose-note a { color: #6ea8fe; text-decoration: underline; }
+  .prose-note strong { color: #fff; font-weight: 600; }
 </style>
 </head>
-<body>
-  <header>
-    <span class="dot"></span>
-    <h1>Robin</h1>
-    <span class="sub">asistente personal</span>
+<body x-data="robinApp()" x-init="init()" class="h-screen bg-bg text-gray-200 font-sans flex flex-col overflow-hidden">
+
+  <!-- Header / tabs -->
+  <header class="flex items-center gap-4 px-5 py-3 border-b border-border shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+      <h1 class="text-sm font-semibold text-white">Robin</h1>
+    </div>
+    <nav class="flex gap-1 ml-2">
+      <template x-for="t in tabs" :key="t.id">
+        <button
+          @click="tab = t.id"
+          class="px-3 py-1.5 rounded-lg text-sm transition"
+          :class="tab === t.id ? 'bg-panel2 text-white' : 'text-muted hover:text-gray-200'"
+          x-text="t.label"
+        ></button>
+      </template>
+    </nav>
   </header>
-  <div id="log"></div>
-  <form id="form">
-    <textarea id="input" rows="1" placeholder="Escribí algo... (Enter para mandar, Shift+Enter para salto de línea)"></textarea>
-    <button id="send" type="submit">Enviar</button>
-  </form>
 
+  <!-- CHAT -->
+  <main x-show="tab === 'chat'" x-cloak class="flex-1 flex flex-col overflow-hidden">
+    <div id="log" x-ref="log" class="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-3 max-w-3xl w-full mx-auto">
+      <template x-for="(m, i) in messages" :key="i">
+        <div
+          class="max-w-[80%] px-3.5 py-2.5 rounded-2xl text-[14.5px] leading-relaxed whitespace-pre-wrap break-words"
+          :class="{
+            'self-end bg-blue-900/40 rounded-br-sm': m.role === 'user',
+            'self-start bg-panel2 border border-border rounded-bl-sm': m.role === 'bot',
+            'self-start text-muted italic': m.role === 'typing',
+            'self-start border border-red-900 text-red-300': m.role === 'error',
+          }"
+          x-text="m.text"
+        ></div>
+      </template>
+    </div>
+    <form @submit.prevent="send()" class="border-t border-border px-5 py-3.5 flex gap-2.5 max-w-3xl w-full mx-auto shrink-0">
+      <textarea
+        x-ref="input"
+        x-model="draft"
+        @keydown.enter.prevent="if (!$event.shiftKey) send()"
+        rows="1"
+        placeholder="Escribí algo... (Enter para mandar, Shift+Enter salto de línea)"
+        class="flex-1 resize-none bg-panel border border-border rounded-xl text-gray-200 px-3 py-2.5 text-[14.5px] max-h-36 focus:outline-none focus:border-accent"
+      ></textarea>
+      <button type="submit" :disabled="sending" class="bg-accent disabled:opacity-50 text-bg font-semibold rounded-xl px-4 text-sm">Enviar</button>
+    </form>
+  </main>
+
+  <!-- MEMORIA -->
+  <main x-show="tab === 'memory'" x-cloak class="flex-1 overflow-hidden flex">
+    <aside class="w-72 border-r border-border overflow-y-auto shrink-0">
+      <template x-for="group in memoryGroups" :key="group.type">
+        <div class="px-4 pt-4">
+          <div class="text-xs uppercase tracking-wide text-muted mb-1.5" x-text="group.type"></div>
+          <template x-for="note in group.notes" :key="note.path">
+            <button
+              @click="openNote(note)"
+              class="block w-full text-left px-2.5 py-2 rounded-lg mb-1 text-sm"
+              :class="selectedNote && selectedNote.path === note.path ? 'bg-panel2 text-white' : 'text-gray-300 hover:bg-panel2/60'"
+            >
+              <div class="font-medium truncate" x-text="note.name || note.path"></div>
+              <div class="text-xs text-muted truncate" x-text="note.description"></div>
+            </button>
+          </template>
+        </div>
+      </template>
+      <div x-show="notes.length === 0" class="px-4 py-6 text-sm text-muted">Vault vacío.</div>
+    </aside>
+    <div class="flex-1 overflow-y-auto px-8 py-6">
+      <template x-if="!selectedNote">
+        <div class="text-muted text-sm">Elegí una nota de la izquierda.</div>
+      </template>
+      <template x-if="selectedNote">
+        <div class="max-w-2xl">
+          <div class="text-xs text-muted mb-1" x-text="selectedNote.path"></div>
+          <h2 class="text-lg font-semibold text-white mb-4" x-text="selectedNote.name || selectedNote.path"></h2>
+          <div class="prose-note text-[14.5px] text-gray-300" x-html="renderedNote"></div>
+        </div>
+      </template>
+    </div>
+  </main>
+
+  <!-- RECORDATORIOS -->
+  <main x-show="tab === 'reminders'" x-cloak class="flex-1 overflow-y-auto px-6 py-6">
+    <div class="max-w-2xl mx-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-white">Recordatorios pendientes</h2>
+        <button @click="loadReminders()" class="text-xs text-muted hover:text-gray-200">↻ actualizar</button>
+      </div>
+      <div x-show="reminders.length === 0" class="text-sm text-muted">No hay recordatorios pendientes.</div>
+      <div class="flex flex-col gap-2.5">
+        <template x-for="r in reminders" :key="r.id">
+          <div class="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3">
+            <div class="min-w-0">
+              <div class="text-sm text-gray-200 truncate" x-text="r.text"></div>
+              <div class="text-xs text-muted" x-text="formatDate(r.run_at)"></div>
+            </div>
+            <button @click="cancel(r.id)" class="text-xs text-red-300 hover:text-red-200 shrink-0">cancelar</button>
+          </div>
+        </template>
+      </div>
+      <p class="text-xs text-muted mt-6">
+        Los creados acá se entregan por Telegram (todavía no hay push al navegador).
+      </p>
+    </div>
+  </main>
+
+<script src="/vendor/alpine.min.js" defer></script>
 <script>
-  const log = document.getElementById("log");
-  const form = document.getElementById("form");
-  const input = document.getElementById("input");
-  const sendBtn = document.getElementById("send");
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
-  function addMessage(text, cls) {
-    const el = document.createElement("div");
-    el.className = "msg " + cls;
-    el.textContent = text;
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
-    return el;
-  }
-
-  input.addEventListener("input", () => {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 140) + "px";
-  });
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      form.requestSubmit();
-    }
-  });
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-
-    addMessage(text, "user");
-    input.value = "";
-    input.style.height = "auto";
-    input.disabled = true;
-    sendBtn.disabled = true;
-
-    const typingEl = addMessage("escribiendo...", "typing");
-
-    try {
-      const res = await fetch("/api/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = await res.json();
-      typingEl.remove();
-      if (!res.ok) {
-        addMessage(data.error || "Error", "bot error");
-      } else {
-        addMessage(data.reply, "bot");
+// Markdown-lite: alcanza para nuestras propias notas (headers, bold, italic,
+// code, listas, links, code fences) — no es un parser completo a propósito.
+function renderMarkdown(md) {
+  let html = escapeHtml(md);
+  html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`);
+  html = html.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  html = html
+    .split(/\n{2,}/)
+    .map((block) => {
+      if (/^<h[1-3]>|^<pre>/.test(block.trim())) return block;
+      const lines = block.split("\n").filter(Boolean);
+      if (lines.every((l) => /^[-*]\s+/.test(l))) {
+        return "<ul>" + lines.map((l) => `<li>${l.replace(/^[-*]\s+/, "")}</li>`).join("") + "</ul>";
       }
-    } catch (err) {
-      typingEl.remove();
-      addMessage("No pude conectar con el servidor.", "bot error");
-    } finally {
-      input.disabled = false;
-      sendBtn.disabled = false;
-      input.focus();
-    }
-  });
+      return `<p>${block.trim().replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("\n");
+  return html;
+}
 
-  input.focus();
+function robinApp() {
+  return {
+    tab: "chat",
+    tabs: [
+      { id: "chat", label: "Chat" },
+      { id: "memory", label: "Memoria" },
+      { id: "reminders", label: "Recordatorios" },
+    ],
+
+    // chat
+    messages: [{ role: "bot", text: "Hola, soy Robin. Contame qué necesitás." }],
+    draft: "",
+    sending: false,
+
+    // memoria
+    notes: [],
+    selectedNote: null,
+    renderedNote: "",
+
+    // recordatorios
+    reminders: [],
+
+    init() {
+      this.loadMemory();
+      this.loadReminders();
+      this.$watch("tab", (t) => {
+        if (t === "reminders") this.loadReminders();
+      });
+    },
+
+    get memoryGroups() {
+      const byType = {};
+      for (const n of this.notes) {
+        const key = n.type || "otros";
+        (byType[key] ??= []).push(n);
+      }
+      return Object.entries(byType).map(([type, notes]) => ({ type, notes }));
+    },
+
+    async loadMemory() {
+      try {
+        const res = await fetch("/api/memory");
+        const data = await res.json();
+        this.notes = data.notes || [];
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    async openNote(note) {
+      this.selectedNote = note;
+      this.renderedNote = "cargando...";
+      try {
+        const res = await fetch("/api/memory/note?path=" + encodeURIComponent(note.path));
+        const data = await res.json();
+        this.renderedNote = res.ok ? renderMarkdown(data.content) : "No se pudo cargar la nota.";
+      } catch (e) {
+        this.renderedNote = "No se pudo cargar la nota.";
+      }
+    },
+
+    async loadReminders() {
+      try {
+        const res = await fetch("/api/reminders");
+        const data = await res.json();
+        this.reminders = data.reminders || [];
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    async cancel(id) {
+      try {
+        await fetch(`/api/reminders/${id}/cancel`, { method: "POST" });
+        await this.loadReminders();
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    formatDate(iso) {
+      try {
+        return new Date(iso).toLocaleString("es-PE", { timeZone: "America/Lima" });
+      } catch {
+        return iso;
+      }
+    },
+
+    scrollLog() {
+      this.$nextTick(() => {
+        if (this.$refs.log) this.$refs.log.scrollTop = this.$refs.log.scrollHeight;
+      });
+    },
+
+    async send() {
+      const text = this.draft.trim();
+      if (!text || this.sending) return;
+      this.messages.push({ role: "user", text });
+      this.draft = "";
+      this.sending = true;
+      this.scrollLog();
+      this.messages.push({ role: "typing", text: "escribiendo..." });
+      this.scrollLog();
+
+      try {
+        const res = await fetch("/api/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        this.messages.pop(); // typing
+        this.messages.push({ role: res.ok ? "bot" : "error", text: res.ok ? data.reply : data.error || "Error" });
+      } catch (e) {
+        this.messages.pop();
+        this.messages.push({ role: "error", text: "No pude conectar con el servidor." });
+      } finally {
+        this.sending = false;
+        this.scrollLog();
+      }
+    },
+  };
+}
 </script>
 </body>
 </html>

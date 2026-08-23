@@ -21,6 +21,8 @@ import { WEB_UI_PORT } from "../../config.ts";
 import { getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
 import { routeMessage } from "../../brain/router.ts";
+import { listNotes, readNote } from "../../brain/memory.ts";
+import { listPendingReminders, cancelReminder } from "../../brain/scheduler.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -53,6 +55,67 @@ app.post("/api/message", async (req, res) => {
   } catch (err) {
     console.error("[web] error procesando mensaje:", err);
     res.status(500).json({ error: "tuve un error interno procesando eso" });
+  }
+});
+
+// Memoria (vault) — solo lectura acá, escribir sigue siendo cosa de remember()
+// desde AGENT (así el índice semántico nunca queda desincronizado).
+app.get("/api/memory", (_req, res) => {
+  try {
+    res.json({ notes: listNotes() });
+  } catch (err) {
+    console.error("[web] error listando memoria:", err);
+    res.status(500).json({ error: "no pude leer la memoria" });
+  }
+});
+
+// `path` va como query param (no en la URL en sí) para no depender de la
+// sintaxis de wildcards de Express — readNote() igual valida contra la lista
+// real de notas del vault, así que un path arbitrario devuelve 404, no lee
+// nada fuera de memory/.
+app.get("/api/memory/note", (req, res) => {
+  const relPath = typeof req.query.path === "string" ? req.query.path : "";
+  const content = readNote(relPath);
+  if (content === null) {
+    res.status(404).json({ error: "nota no encontrada" });
+    return;
+  }
+  res.json({ path: relPath, content });
+});
+
+// Recordatorios pendientes. Creados desde acá o desde Telegram, misma tabla —
+// pero solo Telegram los entrega cuando disparan (ver comentario arriba).
+app.get("/api/reminders", async (_req, res) => {
+  try {
+    const userId = await getOwnerUserId();
+    if (!userId) {
+      res.json({ reminders: [] });
+      return;
+    }
+    res.json({ reminders: await listPendingReminders(userId) });
+  } catch (err) {
+    console.error("[web] error listando recordatorios:", err);
+    res.status(500).json({ error: "no pude leer los recordatorios" });
+  }
+});
+
+app.post("/api/reminders/:id/cancel", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "id inválido" });
+    return;
+  }
+  try {
+    const userId = await getOwnerUserId();
+    const ok = userId ? await cancelReminder(userId, id) : false;
+    if (!ok) {
+      res.status(404).json({ error: "no encontrado o ya no está pendiente" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[web] error cancelando recordatorio:", err);
+    res.status(500).json({ error: "no pude cancelar el recordatorio" });
   }
 });
 
