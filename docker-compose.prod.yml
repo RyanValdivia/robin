@@ -1,0 +1,60 @@
+# Deploy en el VPS. Postgres/Redis SOLO en red interna (sin puertos publicados
+# al host) — ver plan, sección Seguridad. `traefik_proxy` es la red externa de
+# tu Traefik ya corriendo; no la usa ningún servicio todavía (Telegram es
+# long-polling, no necesita puerto entrante) pero queda lista para cuando
+# sumemos algo que sí lo necesite (Web UI en V7, o Telegram en modo webhook).
+#
+# Variables (POSTGRES_PASSWORD, etc.) vienen de .env.prod — ver .env.prod.example.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_DB: jarvis
+      # POSTGRES_PASSWORD viene de .env.prod
+    volumes:
+      - jarvis_pg_data:/var/lib/postgresql/data
+    networks:
+      - jarvis_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - jarvis_redis_data:/data
+    networks:
+      - jarvis_internal
+
+  jarvis:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./memory:/app/memory # el vault vive fuera del contenedor - persiste, editable por SSH/Obsidian
+    networks:
+      - jarvis_internal
+      - traefik_proxy # sin labels activas todavía - ver comentario arriba
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  jarvis_internal:
+    driver: bridge
+  traefik_proxy:
+    external: true
+
+volumes:
+  jarvis_pg_data:
+  jarvis_redis_data:
