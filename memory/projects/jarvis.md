@@ -37,7 +37,11 @@ Embeddings 100% locales (`@huggingface/transformers`, sin API paga). El agente y
 escribe archivos directo en `memory/` — todo pasa por `remember()` para que el índice
 semántico nunca quede desincronizado.
 
-V2 (próximo) — Tools: GitHub MCP, Bash+hooks, Playwright MCP.
+V2 (listo) — Tools: GitHub MCP (oficial, vía Docker, PAT fine-grained del usuario),
+Bash con `PreToolUse` hook denylist (rm -rf, sudo, pipe-a-shell, etc.), Playwright MCP
+(browser). Rama AGENT completa.
+
+V3 (próximo) — Telegram + deploy 24/7 en el VPS.
 
 V3 — Telegram + deploy 24/7 en el VPS.
 

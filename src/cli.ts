@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as readline from "node:readline";
 import { ROOT, MEMORY_INDEX, MEMORY_DIR } from "./config.ts";
 import { memoryMcpServer } from "./brain/tools.ts";
+import { buildMcpServers } from "./brain/mcp.ts";
+import { bashGuardHook } from "./brain/hooks.ts";
 
 function loadMemoryIndex(): string {
   if (!fs.existsSync(MEMORY_INDEX)) {
@@ -26,6 +28,13 @@ function buildSystemPrompt(): string {
 - Para guardar o actualizar algo, usá la tool \`remember\` — no escribas archivos en
   \`memory/\` directo, así queda indexado para búsqueda semántica.
 - No inventes datos sobre el usuario. Si no sabés algo, preguntá.
+
+## Herramientas (rama AGENT)
+- Tenés Bash para tareas de shell/servidor. Hay un guardarraíl automático que bloquea
+  comandos destructivos (rm -rf, sudo, pipes a shell, etc.) — si algo te lo rechaza,
+  no insistas con variantes para esquivarlo, explicáselo al usuario.
+- Tenés un MCP de browser (Playwright) para navegar y extraer información de la web.
+- Si el MCP de GitHub está disponible, podés leer/operar sobre repos del usuario.
 
 ## Índice actual (MEMORY.md)
 ${loadMemoryIndex()}`;
@@ -53,6 +62,10 @@ async function main() {
     output: process.stdout,
     prompt: "vos> ",
   });
+  let closed = false;
+  rl.on("close", () => {
+    closed = true;
+  });
 
   console.log("JARVIS V1 — CLI local + memory engine (Postgres/pgvector). Escribí 'salir' para terminar.\n");
   rl.prompt();
@@ -62,14 +75,14 @@ async function main() {
     options: {
       settingSources: [], // aislado: no hereda hooks/MCP/settings del usuario
       strictMcpConfig: true,
-      mcpServers: { "jarvis-memory": memoryMcpServer },
+      mcpServers: { "jarvis-memory": memoryMcpServer, ...buildMcpServers() },
       systemPrompt: buildSystemPrompt(),
-      // Read/Grep/Glob para que el agente pueda mirar el vault libremente;
-      // search_memory/remember (MCP) son el camino estructurado.
-      tools: ["Read", "Grep", "Glob"],
-      allowedTools: ["mcp__jarvis-memory__search_memory", "mcp__jarvis-memory__remember"],
+      // Read/Grep/Glob para mirar el vault libremente; Bash para AGENT (con hook);
+      // search_memory/remember/GitHub/Playwright son MCP.
+      tools: ["Read", "Grep", "Glob", "Bash"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [bashGuardHook] }] },
       cwd: ROOT,
     },
   });
@@ -87,7 +100,7 @@ async function main() {
       if (text) console.log(`\nJARVIS> ${text}\n`);
     } else if (msg.type === "result") {
       if (msg.is_error) console.error(`\n[error] ${msg.subtype ?? "unknown"}\n`);
-      if (!rl.closed) rl.prompt();
+      if (!closed) rl.prompt();
     }
   }
 
