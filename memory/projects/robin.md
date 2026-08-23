@@ -113,8 +113,8 @@ uso principal).
   del `requirements.txt` original no lo traía, `ModuleNotFoundError` al
   arrancar. Fix: agregado `requests` explícito a `whisper/requirements.txt`.
 
-V7 (EN CURSO) — Más canales: arrancó por Web UI (Discord/WhatsApp quedan
-después). Decisión: `robin.rvaldiviase.com`, protegido por el middleware
+V7 (Web UI LISTA, EN VIVO EN EL VPS, VERIFICADA) — Más canales: arrancó por
+Web UI (Discord/WhatsApp quedan pendientes). Decisión: `robin.rvaldiviase.com`, protegido por el middleware
 `tinyauth` (forward-auth de Traefik) que ya usaba el usuario para
 homarr/portainer/dashboard de Traefik — cero código de auth propio en Robin,
 mismo login que ya conoce.
@@ -134,6 +134,17 @@ mismo login que ya conoce.
 - Sesión de Claude (AGENT) es un solo hilo compartido para todo el canal web
   (no hay noción de "chats" distintos como en Telegram) — mismo patrón que
   el CLI.
+- **Verificado en vivo:** `POST /api/message` interno responde bien
+  (`routeMessage()` funciona); `https://robin.rvaldiviase.com` público da
+  401 sin login — tinyauth gatea de verdad, la app nunca queda expuesta sin
+  auth.
+- **Disco lleno durante el deploy (pendiente de higiene de disco del plan,
+  cobrado):** VPS llegó a 100% (45GB) por build cache + imágenes Docker
+  viejas acumuladas — `docker builder prune -af` + `docker image prune -af`
+  liberaron ~35GB sin tocar datos (volúmenes no se tocan). Falta automatizar
+  esto (cron de `docker system prune` acotado, ver plan sección Seguridad) —
+  ya se dio dos veces (este V7 y en el histórico del plan como riesgo
+  anotado), la próxima vez que corte un build hay que sospechar esto primero.
 
 ## Rename jarvis → robin (proyecto completo)
 
