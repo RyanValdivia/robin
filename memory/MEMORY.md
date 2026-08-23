@@ -7,7 +7,7 @@ se lee bajo demanda (Grep/Read), no acá.
 - user/contacto.md — email del usuario (ryanfabianv@gmail.com)
 
 ## Projects
-- projects/jarvis.md — este proyecto: arquitectura y decisiones de diseño de Robin
+- projects/robin.md — este proyecto: arquitectura y decisiones de diseño de Robin
 
 ## Infrastructure
 

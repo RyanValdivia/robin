@@ -1,17 +1,19 @@
+name: robin
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: jarvis
-      POSTGRES_PASSWORD: jarvis_dev_local
-      POSTGRES_DB: jarvis
+      POSTGRES_USER: robin
+      POSTGRES_PASSWORD: robin_dev_local
+      POSTGRES_DB: robin
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - jarvis_pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      test: ["CMD-SHELL", "pg_isready -U robin -d robin"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -22,8 +24,8 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
-      - jarvis_redis_data:/data
+      - redis_data:/data
 
 volumes:
-  jarvis_pg_data:
-  jarvis_redis_data:
+  pg_data:
+  redis_data:

@@ -1,5 +1,5 @@
 # Binario del GitHub MCP server oficial, copiado de su imagen (distroless) en
-# vez de invocarlo con `docker run` en runtime — el contenedor de jarvis no
+# vez de invocarlo con `docker run` en runtime — el contenedor de robin no
 # tiene (ni debería tener) acceso al socket de Docker del host. Multi-arch,
 # resuelve a la variante correcta (arm64 en el VPS) sola.
 FROM ghcr.io/github/github-mcp-server AS ghmcp
@@ -37,8 +37,8 @@ COPY db ./db
 # (bypassPermissions), que la CLI de Claude Code rechaza si el proceso es root.
 # uid/gid 1001 para que coincida con el owner del bind mount ./memory en el
 # host (usuario `ubuntu` del VPS) y no haya problemas de permisos de escritura.
-RUN groupadd -g 1001 jarvis && useradd -u 1001 -g jarvis -m jarvis \
-    && chown -R jarvis:jarvis /app
-USER jarvis
+RUN groupadd -g 1001 robin && useradd -u 1001 -g robin -m robin \
+    && chown -R robin:robin /app
+USER robin
 
 CMD ["npx", "tsx", "src/adapters/telegram/index.ts"]

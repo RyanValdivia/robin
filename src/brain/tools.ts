@@ -1,4 +1,4 @@
-// Tools MCP propios de JARVIS: search_memory / remember / schedule_task.
+// Tools MCP propios de Robin: search_memory / remember / schedule_task.
 // Único camino de escritura al vault — reemplaza Write/Edit crudos así el
 // índice semántico (pgvector) nunca queda desincronizado de los archivos.
 import { z } from "zod";
@@ -116,7 +116,7 @@ const cancelReminderTool = tool(
 );
 
 export const memoryMcpServer = createSdkMcpServer({
-  name: "jarvis-memory",
+  name: "robin-memory",
   version: "0.1.0",
   tools: [searchMemoryTool, rememberTool, scheduleTaskTool, listRemindersTool, cancelReminderTool],
 });

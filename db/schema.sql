@@ -1,4 +1,4 @@
--- JARVIS — schema Postgres (memoria operacional + índice semántico)
+-- Robin — schema Postgres (memoria operacional + índice semántico)
 -- Ver plan: quisiera-hacer-algo-asi-squishy-kurzweil.md
 
 CREATE EXTENSION IF NOT EXISTS vector;

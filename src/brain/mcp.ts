@@ -16,7 +16,7 @@ export function buildMcpServers(): Record<string, McpServerConfig> {
     servers.github = {
       type: "stdio",
       // Binario copiado a la imagen en el Dockerfile (multi-stage desde
-      // ghcr.io/github/github-mcp-server) — así el contenedor de jarvis no
+      // ghcr.io/github/github-mcp-server) — así el contenedor de robin no
       // necesita acceso al socket de Docker del host para levantarlo.
       // En dev local (sin ese multi-stage) cae al `docker run` de siempre.
       command: process.env.GITHUB_MCP_BIN ?? "docker",
@@ -27,7 +27,7 @@ export function buildMcpServers(): Record<string, McpServerConfig> {
     };
   } else {
     console.log(
-      "[jarvis] GITHUB_PERSONAL_ACCESS_TOKEN no seteado en .env — tools de GitHub deshabilitadas por ahora.",
+      "[robin] GITHUB_PERSONAL_ACCESS_TOKEN no seteado en .env — tools de GitHub deshabilitadas por ahora.",
     );
   }
 

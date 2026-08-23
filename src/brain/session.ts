@@ -12,7 +12,7 @@ function brainOptions(): Options {
   return {
     settingSources: [], // aislado: no hereda hooks/MCP/settings del usuario
     strictMcpConfig: true,
-    mcpServers: { "jarvis-memory": memoryMcpServer, ...buildMcpServers() },
+    mcpServers: { "robin-memory": memoryMcpServer, ...buildMcpServers() },
     systemPrompt: buildSystemPrompt(),
     tools: ["Read", "Grep", "Glob", "Bash"],
     permissionMode: "bypassPermissions",

@@ -1,24 +1,25 @@
 # Robin
 
-Asistente personal con Claude (nombre en código interno del repo/infra: `jarvis`
-— carpeta, DB, Docker; el proyecto se llama y se presenta como **Robin**).
-Arquitectura completa en
+Asistente personal con Claude — memoria propia (vault markdown + Postgres +
+pgvector), router híbrido por capacidad (DIRECT sin LLM / KNOWLEDGE vía Groq /
+AGENT vía Claude Agent SDK con GitHub/Bash/Browser), recordatorios proactivos,
+corriendo 24/7 en VPS propio, hoy por Telegram. Arquitectura completa en
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`.
 
-## Estado: V4 listo, corriendo 24/7 en el VPS
+## Estado: V5 listo, corriendo 24/7 en el VPS
 
-- **V0-V4 listas**: CLI local, memoria persistente (vault markdown + Postgres +
-  pgvector para búsqueda semántica), Bash con guardarraíl, Playwright MCP, GitHub MCP,
-  Telegram (`@robin_rv_bot`) desplegado y corriendo 24/7 en el VPS propio, router
-  híbrido por capacidad (DIRECT sin LLM / KNOWLEDGE vía Groq / AGENT vía Claude).
-- Siguiente: V5 — proactividad (scheduler, no depende de Claude para disparar).
+- **V0-V5 listas**: CLI local, memoria persistente, Bash con guardarraíl,
+  Playwright MCP, GitHub MCP, Telegram (`@robin_rv_bot`), router híbrido por
+  capacidad, recordatorios proactivos (scheduler que no depende de Claude
+  para disparar).
+- Siguiente: V6 — voz local (faster-whisper + Piper).
 
 ## Desarrollo local
 
 ```
 npm install
 docker compose up -d          # Postgres + Redis
-docker compose exec -T postgres psql -U jarvis -d jarvis < db/schema.sql   # solo la primera vez
+docker compose exec -T postgres psql -U robin -d robin < db/schema.sql   # solo la primera vez
 npm run chat                  # CLI
 ```
 

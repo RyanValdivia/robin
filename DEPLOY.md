@@ -5,8 +5,8 @@ Asume: VPS con Docker + Docker Compose, Traefik ya corriendo (red `traefik_proxy
 ## 1. Llevar el código
 
 ```bash
-git clone <tu-repo> jarvis   # o rsync/scp si todavía no está en un remoto
-cd jarvis
+git clone <tu-repo> robin   # o rsync/scp si todavía no está en un remoto
+cd robin
 ```
 
 ## 2. Configurar `.env.prod`
@@ -38,15 +38,15 @@ Necesitás Postgres ya arriba para esto:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d postgres redis
-docker compose -f docker-compose.prod.yml exec -T postgres psql -U jarvis -d jarvis < db/schema.sql
-docker compose -f docker-compose.prod.yml run --build --rm jarvis npm run bootstrap-owner -- telegram <TU_ID_DE_TELEGRAM>
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U robin -d robin < db/schema.sql
+docker compose -f docker-compose.prod.yml run --build --rm robin npm run bootstrap-owner -- telegram <TU_ID_DE_TELEGRAM>
 ```
 
 ## 5. Arrancar todo
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f jarvis
+docker compose -f docker-compose.prod.yml logs -f robin
 ```
 
 Debería loguear `[telegram] listo — @tu_bot`. Mandale un mensaje desde tu
@@ -56,7 +56,7 @@ Telegram y confirmá que responde.
 
 ```bash
 git pull
-docker compose -f docker-compose.prod.yml up -d --build jarvis
+docker compose -f docker-compose.prod.yml up -d --build robin
 ```
 
 ## Vault (`memory/`)

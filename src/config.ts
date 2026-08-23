@@ -15,7 +15,7 @@ export const MEMORY_INDEX = path.join(MEMORY_DIR, "MEMORY.md");
 
 export const DATABASE_URL =
   process.env.DATABASE_URL ??
-  "postgres://jarvis:jarvis_dev_local@localhost:5432/jarvis";
+  "postgres://robin:robin_dev_local@localhost:5432/robin";
 
 export const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
