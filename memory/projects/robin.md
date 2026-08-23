@@ -163,6 +163,15 @@ mismo login que ya conoce.
   (`routeMessage()` funciona); `https://robin.rvaldiviase.com` público da
   401 sin login — tinyauth gatea de verdad, la app nunca queda expuesta sin
   auth.
+- **Voz en la Web UI** (mismo patrón que Telegram): `POST /api/voice-message`
+  transcribe con `whisper/`, entra a `routeMessage()`, y si `piper/` está
+  configurado la respuesta viaja también como audio (base64 en el JSON —
+  clips chicos, no vale la pena un endpoint binario aparte). Frontend graba
+  con `MediaRecorder` del navegador (botón 🎙️, solo visible si
+  `GET /api/voice-status` dice que STT está disponible); la respuesta con
+  audio se reproduce sola y queda un botón "▶ escuchar" para repetirla.
+  Verificado en vivo end-to-end (STT→router→TTS, 200 con audio real de
+  vuelta).
 - **Disco lleno durante el deploy (pendiente de higiene de disco del plan,
   cobrado):** VPS llegó a 100% (45GB) por build cache + imágenes Docker
   viejas acumuladas — `docker builder prune -af` + `docker image prune -af`
