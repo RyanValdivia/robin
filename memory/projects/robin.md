@@ -145,6 +145,50 @@ mismo login que ya conoce.
   esto (cron de `docker system prune` acotado, ver plan sección Seguridad) —
   ya se dio dos veces (este V7 y en el histórico del plan como riesgo
   anotado), la próxima vez que corte un build hay que sospechar esto primero.
+  **Resuelto después:** `/etc/docker/daemon.json` con log rotation
+  (max-size 10m, max-file 3) + cron semanal (usuario `ubuntu`, domingos 4am)
+  de `docker image/builder prune -af --filter "until=168h"`.
+
+**Dashboard de la Web UI ampliado** (mismo commit que el resumen proactivo,
+ver abajo): tabs **Memoria** (sidebar con notas del vault + viewer con
+markdown-lite renderizado — solo lectura, escribir sigue siendo `remember()`
+desde AGENT) y **Recordatorios** (lista + cancelar). Estilo con Tailwind Play
+CDN + Alpine.js, ambos vendoreados en `public/vendor/` (bajados una vez, sin
+build step, sin CDN externo en runtime — mismo espíritu minimalista).
+- **Bug encontrado y arreglado:** el vault tenía notas con CRLF (de una
+  sincronización manual anterior desde Windows) — el parser de frontmatter
+  nuevo (`listNotes`/`readNote` en `memory.ts`) solo esperaba `\n`, devolvía
+  type/name/description vacíos. Fix: normalizar CRLF→LF en un único punto de
+  lectura (`readNoteFile`), el resto del código ya no necesita saber de esto.
+
+**Resumen proactivo (diario/semanal) + dashboard de uso/costos** — dos
+features pedidas después de repasar "qué le falta a Robin":
+- `brain/proactive.ts`: BullMQ `upsertJobScheduler` (cron + `tz:
+  "America/Lima"`, idempotente entre restarts) — diario 8am, semanal lunes
+  8am. A diferencia de un recordatorio normal, ACÁ sí se llama a Claude en
+  el momento del disparo (una `BrainSession` de un solo uso, con
+  `search_memory` disponible) para generar el texto — no está fijado de
+  antemano. Corre en el proceso de Telegram (mismo que el worker de
+  recordatorios), reusando su outbound sender.
+  - **Cambio de arquitectura que arrastró:** `BrainSession` (`session.ts`)
+    no tenía forma de cerrarse — bien para las sesiones por chat (viven todo
+    el proceso), pero una sesión de un solo uso como esta dejaba corriendo
+    un proceso de Claude Code para siempre en cada disparo. Se agregó
+    `close()`.
+  - `resolveOwnerChannel()` se movió de `tools.ts` a `auth.ts` (lo reusan
+    los dos).
+- Dashboard de uso: tablas nuevas `message_log` (categoría+canal por
+  mensaje ruteado) y `groq_usage_log` (tokens por llamada). `router.ts`
+  loguea cada clasificación; `cheapLLM.ts` loguea el `usage` que ya venía
+  en la respuesta de Groq. Todo el logging es fire-and-forget (nunca rompe
+  una respuesta real si falla). Tab nueva **Uso** en la Web UI: stat tiles +
+  barras por categoría (paleta categórica del skill de dataviz, validada,
+  slots 1-3 dark: blue/orange/aqua) — muestra en vivo que DIRECT/KNOWLEDGE
+  no tocan la cuota de Claude.
+- **Verificado en vivo:** mensaje DIRECT y KNOWLEDGE de prueba aparecieron
+  en `/api/usage` con tokens reales de Groq (169/220); los dos job
+  schedulers quedaron registrados en BullMQ con próximo disparo correcto
+  (lunes 8am Lima).
 
 ## Rename jarvis → robin (proyecto completo)
 
