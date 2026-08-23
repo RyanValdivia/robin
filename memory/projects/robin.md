@@ -87,9 +87,7 @@ V5 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Proactividad: scheduler.
   fila en Postgres pero `reminderQueue.add()` tiraba antes de encolar el
   job — el recordatorio nunca disparaba. Fix: `"task-${id}"`.
 
-V6 (LISTO, EN VIVO EN EL VPS, VERIFICADO) — Voz: solo STT por ahora (decisión:
-alcance recortado a transcribir, sin TTS/Piper — menos infra, cubre el caso de
-uso principal).
+V6 (LISTO, EN VIVO EN EL VPS, VERIFICADO — STT+TTS completo) — Voz.
 - `whisper/`: servicio Python aparte (faster-whisper/ctranslate2) con un
   wrapper HTTP mínimo (FastAPI) — expone `POST /transcribe` (bytes de audio
   crudos) → `{text, language}`. Separado del proceso Node del brain porque
@@ -112,6 +110,33 @@ uso principal).
   `requests` pero no lo declara como dependencia propia — `pip install`
   del `requirements.txt` original no lo traía, `ModuleNotFoundError` al
   arrancar. Fix: agregado `requests` explícito a `whisper/requirements.txt`.
+
+**TTS (Piper)** — completa V6 (decisión: alcance ampliado de solo-STT a
+STT+TTS después de repasar qué le faltaba a Robin).
+- `piper/`: servicio Node (sin Express, `http` nativo — un solo endpoint no
+  lo justificaba) que shellea el binario oficial de Piper (release
+  multi-arch, resuelve aarch64/x86_64 solo) y pipea el PCM crudo
+  (`--output_raw`) directo a `ffmpeg`, que transcodea a OGG/Opus — formato
+  que Telegram necesita para una nota de voz real (`sendVoice`), no un
+  archivo de audio genérico. Sin archivos temporales, todo por pipe.
+- **Voz elegida:** `es_MX-claude-high` (español mexicano, calidad "high",
+  ~63MB) — no hay voz `es_PE` en el catálogo de Piper; latam es más cercano
+  al oído peruano que castellano (`es_ES`). Nombre "claude" es casualidad
+  del catálogo, no elegido por el nombre.
+- Modelo se descarga una vez a un volumen (`piper_voices`), mismo patrón
+  que `whisper_model`.
+- **Verificado en vivo ANTES de escribir el Dockerfile:** se probaron los
+  flags reales del binario (`--model`, `--output_raw`, no
+  `--output-raw`/guión) y el pipeline completo piper→ffmpeg→ogg a mano por
+  SSH — evitó adivinar mal la CLI.
+- **Bug encontrado y arreglado en el deploy:** el server nunca escribía el
+  texto al stdin de Piper (`piper.stdin.write`/`.end()` faltaban) — Piper
+  se quedaba esperando stdin para siempre, la request colgaba sin
+  responder ni fallar. Encontrado probando en vivo (timeout de 120s en la
+  primera prueba real).
+- Telegram: solo manda nota de voz cuando la entrada TAMBIÉN fue voz (no
+  fuerza audio en una conversación tipeada) — además del texto, no en vez
+  de.
 
 V7 (Web UI LISTA, EN VIVO EN EL VPS, VERIFICADA) — Más canales: arrancó por
 Web UI (Discord/WhatsApp quedan pendientes). Decisión: `robin.rvaldiviase.com`, protegido por el middleware
