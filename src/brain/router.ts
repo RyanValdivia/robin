@@ -52,6 +52,13 @@ const AGENT_RE =
 const KNOWLEDGE_RE =
   /\b(record[aá]s|te acord[aá]s|qu[eé] sab[eé]s|qui[eé]n soy|mis?\s+proyectos?|mi\s+informaci[oó]n|seg[uú]n\s+(mi|tu)\s+memoria|qu[eé]\s+notas?\s+ten[eé]s)\b/i;
 
+// Preguntas sobre el propio asistente (identidad/capacidades) — NO son knowledge
+// (eso es memoria del USUARIO, no del bot). Robin solo puede presentarse bien vía
+// AGENT (Claude), que tiene la persona real en el system prompt; KNOWLEDGE buscaría
+// en el vault, no encontraría nada, y respondería "no tengo información".
+const IDENTITY_RE =
+  /\b(qu[eé]\s+(eres|sos)|qui[eé]n\s+(eres|sos)|c[oó]mo\s+te\s+llam[aá]s|qu[eé]\s+(puedes|pod[eé]s)\s+hacer|qu[eé]\s+sabe[sé]\s+hacer|para\s+qu[eé]\s+sirv[eé]s)\b/i;
+
 function classifyHeuristic(text: string): Category | null {
   const t = text.trim();
   if (REMINDER_AT_RE.test(t) || REMINDER_IN_RE.test(t)) return "direct";
@@ -59,6 +66,7 @@ function classifyHeuristic(text: string): Category | null {
   if (GREETING_RE.test(t)) return "direct";
   if (TIME_RE.test(t)) return "direct";
   if (CALC_RE.test(t) && /\d/.test(t)) return "direct";
+  if (IDENTITY_RE.test(t)) return "agent";
   if (AGENT_RE.test(t)) return "agent";
   if (KNOWLEDGE_RE.test(t)) return "knowledge";
   return null;
@@ -72,8 +80,10 @@ async function classifyWithCheapLlm(text: string): Promise<Category> {
         content:
           "Clasificá el mensaje del usuario en UNA sola palabra: direct, knowledge o agent.\n" +
           "- direct: saludo, hora/fecha, cálculo simple.\n" +
-          "- knowledge: pregunta sobre información personal/notas guardadas del usuario.\n" +
-          "- agent: pide ejecutar algo (código, GitHub, servidor, navegar la web) o cualquier cosa compleja/ambigua.\n" +
+          "- knowledge: pregunta sobre información PERSONAL DEL USUARIO guardada en sus notas " +
+          "(sus proyectos, su infraestructura, cosas que le pidió recordar).\n" +
+          "- agent: pide ejecutar algo (código, GitHub, servidor, navegar la web), pregunta sobre " +
+          "el propio asistente (quién/qué es, qué puede hacer) o cualquier cosa compleja/ambigua.\n" +
           "Respondé solo la palabra, nada más.",
       },
       { role: "user", content: text },
