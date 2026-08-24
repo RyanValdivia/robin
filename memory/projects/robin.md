@@ -287,6 +287,33 @@ porque el proyecto es de portafolio.
   `web` de `docker-compose.prod.yml`. Verificado en vivo tras el fix:
   traefik alcanza el container por su IP de `traefik_proxy`, público pasó
   de 502 a 401 (gate normal).
+- **Bug reportado por el usuario: "Hola, ¿qué eres?" (por voz) respondió
+  "No tengo información suficiente para responder"** — dos causas
+  encadenadas, ambas arregladas:
+  1. Router: la pregunta no matcheaba `GREETING_RE` (tiene más texto que
+     solo el saludo) y quedaba ambigua para la heurística → el LLM barato
+     (Groq) la clasificaba como `knowledge` (es una pregunta). KNOWLEDGE
+     busca en el vault del USUARIO, no encuentra nada sobre "qué es
+     Robin", y responde honestamente que no tiene info — correcto para su
+     categoría, pero la categoría en sí estaba mal: preguntas de identidad
+     del propio asistente las tiene que responder AGENT (Claude, con la
+     persona real en `systemPrompt.ts`). Fix: `IDENTITY_RE` nuevo en
+     `router.ts` (qué eres/quién sos/qué podés hacer/etc.) → `agent`
+     directo, sin pasar por el LLM barato; reforzado también el prompt de
+     clasificación del LLM barato para lo que el regex no cubra.
+  2. Una vez ruteado a AGENT, reventaba con `Native CLI binary for
+     linux-arm64 not found`: el Agent SDK resuelve el binario de la CLI de
+     Claude Code como `optionalDependency` por plataforma
+     (`@anthropic-ai/claude-agent-sdk-linux-arm64`) en runtime, no vía
+     require/import estático — el file tracer de Next (`output:
+     standalone`) no lo detecta, así que nunca lo copiaba al runtime aunque
+     estuviera en `node_modules` del build (confirmado inspeccionando el
+     stage `builder` a mano: el paquete SÍ estaba ahí). El servicio `robin`
+     (Telegram) nunca tuvo este bug porque su Dockerfile copia
+     `node_modules` completo, sin standalone/tracing. Fix: `web/Dockerfile`
+     copia `@anthropic-ai/` completo del builder al runner a mano.
+  - **Verificado en vivo tras ambos fixes:** `POST /api/message` con "Hola,
+    que eres?" responde con la persona real de Robin (vía AGENT, Claude).
 
 ## Rename jarvis → robin (proyecto completo)
 
