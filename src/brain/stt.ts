@@ -12,7 +12,11 @@ export async function transcribeAudio(audio: Buffer): Promise<string> {
   const res = await fetch(`${WHISPER_URL}/transcribe`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
-    body: audio,
+    // Uint8Array (no Buffer directo) para que el tipo de fetch() resuelva
+    // igual en los dos tsconfig del repo (el del root no tiene lib "dom", el
+    // de web/ sí, y cada uno tipa el overload de Buffer distinto). Clips de
+    // audio son chicos, la copia no importa.
+    body: new Uint8Array(audio),
   });
   if (!res.ok) {
     throw new Error(`whisper respondió ${res.status}: ${await res.text()}`);

@@ -75,20 +75,23 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Web UI (V7, ver plan) — misma imagen que `robin`, `command` distinto.
-  # Proceso aparte a propósito: así solo el de Telegram corre el Worker del
+  # Web UI (V7, ver plan) — Next.js/React/shadcn, proceso Docker aparte del
+  # de Telegram a propósito: así solo el de Telegram corre el Worker del
   # scheduler (brain/scheduler.ts) y no hay ambigüedad de qué proceso tiene
   # el outbound sender registrado. Sin auth propia — tinyauth (Traefik) es el
-  # gate real; ver comentario en src/adapters/web/index.ts.
+  # gate real; ver comentario en web/app/api/*.
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: web/Dockerfile
     restart: unless-stopped
-    command: ["npx", "tsx", "src/adapters/web/index.ts"]
     env_file:
       - .env.prod
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./memory:/app/memory # mismo vault que `robin` - antes faltaba este mount acá
     networks:
       - robin_internal
       - traefik_proxy

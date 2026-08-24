@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paleta oscura fija (mismo criterio que la versión anterior de la Web UI:
+   la app siempre corre en dark, no hay toggle de tema todavía). */
+:root {
+  --bg: 220 20% 7%;
+  --panel: 220 16% 11%;
+  --panel2: 222 16% 13%;
+  --border: 220 15% 16%;
+  --muted: 220 8% 58%;
+  --accent: 213 92% 71%;
+  --accent-foreground: 220 20% 7%;
+  --destructive: 0 63% 45%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: hsl(var(--bg));
+  color: #e6e8ec;
+}
+
+/* Notas de memoria (markdown-lite) — mismo look que antes. */
+.prose-note :is(h1, h2, h3) {
+  font-weight: 600;
+  margin: 1em 0 0.4em;
+  color: #fff;
+}
+.prose-note h1 {
+  font-size: 1.25rem;
+}
+.prose-note h2 {
+  font-size: 1.1rem;
+}
+.prose-note h3 {
+  font-size: 1rem;
+}
+.prose-note p {
+  margin: 0.5em 0;
+  line-height: 1.6;
+}
+.prose-note ul {
+  margin: 0.5em 0;
+  padding-left: 1.3em;
+  list-style: disc;
+}
+.prose-note li {
+  margin: 0.2em 0;
+  line-height: 1.55;
+}
+.prose-note code {
+  background: #10131a;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  font-size: 0.85em;
+}
+.prose-note pre {
+  background: #10131a;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0.8em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.prose-note pre code {
+  border: none;
+  padding: 0;
+}
+.prose-note a {
+  color: hsl(var(--accent));
+  text-decoration: underline;
+}
+.prose-note strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2f3a;
+  border-radius: 4px;
+}

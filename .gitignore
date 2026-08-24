@@ -3,3 +3,5 @@ dist/
 .env
 *.log
 .playwright-mcp/
+.next/
+web/next-env.d.ts
