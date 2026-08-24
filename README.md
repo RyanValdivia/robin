@@ -17,11 +17,12 @@ corriendo 24/7 en VPS propio, hoy por Telegram. Arquitectura completa en
   (`whisper/`, STT) y, si vino por voz, la respuesta también se manda como
   nota de voz sintetizada con Piper (`piper/`, TTS) — ambos servicios locales
   y gratis, aparte del proceso principal.
-- **V7 (Web UI)**: `https://robin.rvaldiviase.com` — dashboard con tabs Chat/
-  Memoria/Recordatorios/Uso (`src/adapters/web/`), mismo `routeMessage()` que
-  Telegram. Sin auth propia — en prod queda detrás del middleware `tinyauth`
-  de Traefik (mismo gate que el resto de servicios admin del VPS). Corre
-  como proceso/servicio Docker aparte del de Telegram.
+- **V7 (Web UI)**: `https://robin.rvaldiviase.com` — Next.js 15/React 19 +
+  componentes estilo shadcn (`web/`), dashboard con tabs Chat/Memoria/
+  Recordatorios/Uso, mismo `routeMessage()` que Telegram (importa `src/brain/*`
+  directo, sin duplicar lógica). Sin auth propia — en prod queda detrás del
+  middleware `tinyauth` de Traefik (mismo gate que el resto de servicios
+  admin del VPS). Corre como servicio Docker aparte del de Telegram.
 - Siguiente: Discord, WhatsApp (Baileys) — resto de V7.
 
 ## Desarrollo local
@@ -38,6 +39,19 @@ Requiere estar logueado con Claude Code en esta máquina (`claude login` /
 
 Escribí `salir` para terminar el CLI.
 
+Para la Web UI en local (Next.js, `web/`, proyecto propio con su
+`package.json`):
+
+```
+cd web
+npm install
+npm run dev                   # http://localhost:3000
+```
+
+Importa `src/brain/*` directo (paths `@brain/*`/`@config` en
+`web/tsconfig.json`) — sigue necesitando Postgres/Redis/whisper/piper
+levantados (paso de arriba) para que todas las tabs funcionen.
+
 ## Deploy en VPS
 
 Ver `DEPLOY.md`.
@@ -48,6 +62,8 @@ Ver `DEPLOY.md`.
   (memoria, tools, hooks, MCP).
 - `src/brain/systemPrompt.ts` — persona ("Robin") + memoria inyectada al contexto.
 - `src/brain/memory.ts` — `search_memory()`/`remember()` (grep + pgvector).
-- `src/adapters/` — canales (CLI, Telegram, Web, ...), thin, sin lógica de LLM.
+- `src/adapters/` — canales (CLI, Telegram, ...), thin, sin lógica de LLM.
+- `web/` — Web UI, Next.js/React/shadcn aparte (su propio `package.json`),
+  importa `src/brain/*` directo.
 - `memory/` — vault de conocimiento (fuente de verdad). Editable a mano (Obsidian
   compatible) o por Robin mismo cuando le pedís que recuerde algo.

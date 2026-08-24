@@ -224,6 +224,59 @@ features pedidas después de repasar "qué le falta a Robin":
   schedulers quedaron registrados en BullMQ con próximo disparo correcto
   (lunes 8am Lima).
 
+**Migración de la Web UI a Next.js/React/shadcn** (reemplaza por completo el
+adapter Express+vanilla-JS/Alpine/Tailwind-CDN descrito arriba) — pedido
+explícito del usuario tras la queja de que se veía mal en celular: en vez de
+seguir parchando CSS, mover a un framework real para mejor pulido visual y
+porque el proyecto es de portafolio.
+- `web/`: app Next.js 15 (App Router) + React 19 propia, con su propio
+  `package.json`/`node_modules` — **no** un paquete nuevo del monorepo, vive
+  al lado de `src/`. Importa el brain directo (`@brain/*` → `../src/brain/*`,
+  `@config` → `../src/config.ts` en `web/tsconfig.json`) — cero duplicación
+  de lógica de negocio. Node resuelve solo los paquetes de terceros
+  (`pg`/`ioredis`/etc.) hacia arriba, al `node_modules` de la raíz.
+- Componentes estilo shadcn (`Button`/`Textarea`/`Card`/`Badge`) escritos a
+  mano con `class-variance-authority`+`clsx`+`tailwind-merge` — **sin Radix**:
+  nada acá necesita comportamiento polimórfico/`asChild`, así que se saltó
+  esa dependencia a propósito.
+- `output: "standalone"` + `serverExternalPackages` (pg/ioredis/bullmq/Agent
+  SDK/transformers) en `next.config.mjs` — esos paquetes quedan como archivos
+  reales trazados en vez de bundleados; el código propio (`src/brain/*`) SÍ
+  queda bundleado adentro de los route handlers (confirmado inspeccionando
+  el output real), no hace falta copiar `src/` al runtime del Dockerfile.
+- **Gotcha:** cada `route.ts` de Next es un módulo aislado (a diferencia del
+  Express de un solo archivo) — una sesión de chat local a `message/route.ts`
+  NO es la misma instancia que ve `voice-message/route.ts`, rompía la
+  continuidad de conversación en AGENT para voz. Fix: `web/lib/session.ts`
+  con el singleton compartido, importado por ambas rutas.
+- **Gotcha de tipos:** `src/brain/stt.ts` pasaba un `Buffer` a `fetch(body:)`
+  — bajo el tsconfig de `web/` (con lib `"dom"`) no resolvía el overload;
+  forzar `as BodyInit` rompía el tsconfig de la raíz (sin lib `"dom"`, el
+  tipo `BodyInit` ni existe ahí). Fix real: `body: new Uint8Array(audio)` —
+  tipo válido en ambos tsconfig, `Buffer` ya extiende `Uint8Array`.
+- `web/tsconfig.json` necesitó `"allowImportingTsExtensions": true` — los
+  imports internos de `src/brain/*.ts` usan extensión `.ts` explícita
+  (necesario para correr con `tsx`), que el typecheck más estricto de
+  Next.js rechaza por defecto.
+- **Bug de infra encontrado de paso:** el servicio `web` viejo en
+  `docker-compose.prod.yml` nunca tuvo montado `./memory:/app/memory` (solo
+  `robin` lo tenía) — la Web UI leía una foto vieja del vault, congelada al
+  build de la imagen. Se agregó el mismo mount al nuevo servicio `web`.
+- `web/Dockerfile`: 4 stages (`base`→`deps`→`builder`→`runner`), mismo patrón
+  no-root uid/gid 1001 que el resto de los Dockerfiles del proyecto. Build
+  context es la raíz del repo (no `./web`), porque necesita `src/` disponible
+  al compilar.
+- **Verificado en vivo (VPS) tras el deploy:** logs limpios (`Ready in
+  340ms`), `GET /api/voice-status` → `{"stt":true,"tts":true}`,
+  `POST /api/message` con "que hora es" → responde con hora de Lima correcta
+  vía DIRECT (sin tocar Claude), `https://robin.rvaldiviase.com` público
+  sigue dando 401 sin login (tinyauth intacto). Nota: el server de Next
+  standalone bindea al IP real del contenedor en la red Docker, no a
+  `localhost` — normal, Traefik/otros contenedores igual lo alcanzan por IP/
+  nombre de servicio.
+- Se borró todo el adapter viejo: `src/adapters/web/` (index.ts Express +
+  `public/` con Alpine/Tailwind vendoreados).
+
 ## Rename jarvis → robin (proyecto completo)
 
 Nombre en código inicial del repo fue `jarvis` (V0-V4); se renombró todo a

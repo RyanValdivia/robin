@@ -67,8 +67,8 @@ docker compose -f docker-compose.prod.yml up -d --build whisper
 docker compose -f docker-compose.prod.yml up -d --build piper
 ```
 
-Si el cambio fue en `src/adapters/web/` (Web UI, V7), rebuildear `web`
-(misma imagen que `robin`, `command` distinto):
+Si el cambio fue en `web/` (Web UI, V7 — Next.js/React/shadcn, imagen propia
+vía `web/Dockerfile`), rebuildear `web`:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build web
