@@ -29,6 +29,14 @@ ENV NODE_ENV=production
 COPY --from=builder /app/web/.next/standalone ./
 COPY --from=builder /app/web/.next/static ./web/.next/static
 
+# El Agent SDK (rama AGENT) resuelve el binario nativo de la CLI de Claude Code
+# como un optionalDependency por plataforma (@anthropic-ai/claude-agent-sdk-*)
+# en runtime, no vía require/import estático - el file tracer de Next
+# (standalone) no lo detecta y lo deja afuera, aunque esté en node_modules del
+# build. Se copia a mano (todo @anthropic-ai/, cubre cualquier arch/libc que
+# haya instalado npm en el builder).
+COPY --from=builder /app/node_modules/@anthropic-ai ./node_modules/@anthropic-ai
+
 RUN groupadd -g 1001 robin && useradd -u 1001 -g robin -m robin \
     && chown -R robin:robin /app
 USER robin
