@@ -87,6 +87,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env.prod
+    environment:
+      # Docker setea HOSTNAME=<container id> por defecto - el server.js de
+      # Next standalone usa esa var como bind address si está seteada, y
+      # termina resolviendo (vía /etc/hosts) solo la IP de UNA red (la de
+      # robin_internal), dejando traefik_proxy inalcanzable -> 502 Bad
+      # Gateway. Forzar 0.0.0.0 para que escuche en todas las interfaces.
+      - HOSTNAME=0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
