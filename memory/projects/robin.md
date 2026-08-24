@@ -276,6 +276,17 @@ porque el proyecto es de portafolio.
   nombre de servicio.
 - Se borró todo el adapter viejo: `src/adapters/web/` (index.ts Express +
   `public/` con Alpine/Tailwind vendoreados).
+- **Bug post-deploy: 502 Bad Gateway en `robin.rvaldiviase.com`**, reportado
+  por el usuario. Causa: Docker setea `HOSTNAME=<container id>` por defecto
+  en todo contenedor; el `server.js` de Next standalone usa esa var como
+  bind address si está seteada (en vez de `0.0.0.0`) — terminaba resolviendo
+  vía `/etc/hosts` la IP de UNA sola red (`robin_internal`), dejando
+  `traefik_proxy` (por donde entra el tráfico real) inalcanzable.
+  Confirmado con `wget` desde el propio contenedor de `traefik` a esa IP:
+  timeout. Fix: `environment: HOSTNAME=0.0.0.0` explícito en el servicio
+  `web` de `docker-compose.prod.yml`. Verificado en vivo tras el fix:
+  traefik alcanza el container por su IP de `traefik_proxy`, público pasó
+  de 502 a 401 (gate normal).
 
 ## Rename jarvis → robin (proyecto completo)
 
