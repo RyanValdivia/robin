@@ -41,17 +41,18 @@
 </head>
 <body x-data="robinApp()" x-init="init()" class="h-dvh bg-bg text-gray-200 font-sans flex flex-col overflow-hidden">
 
-  <!-- Header / tabs -->
+  <!-- Header — en mobile la navegación vive abajo (bottom nav, como una app
+       de mensajería); en desktop hay lugar de sobra arriba. -->
   <header class="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 border-b border-border shrink-0">
     <div class="flex items-center gap-2 shrink-0">
       <span class="w-2.5 h-2.5 rounded-full bg-green-400"></span>
       <h1 class="text-sm font-semibold text-white">Robin</h1>
     </div>
-    <nav class="flex gap-1 overflow-x-auto">
+    <nav class="hidden md:flex gap-1">
       <template x-for="t in tabs" :key="t.id">
         <button
           @click="tab = t.id"
-          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-sm transition whitespace-nowrap shrink-0"
+          class="px-3 py-1.5 rounded-lg text-sm transition whitespace-nowrap"
           :class="tab === t.id ? 'bg-panel2 text-white' : 'text-muted hover:text-gray-200'"
           x-text="t.label"
         ></button>
@@ -61,45 +62,58 @@
 
   <!-- CHAT -->
   <main x-show="tab === 'chat'" x-cloak class="flex-1 flex flex-col overflow-hidden">
-    <div id="log" x-ref="log" class="flex-1 overflow-y-auto px-3 sm:px-5 py-5 flex flex-col gap-3 max-w-3xl w-full mx-auto">
+    <div id="log" x-ref="log" class="flex-1 overflow-y-auto px-3 sm:px-5 py-5 flex flex-col gap-2.5 max-w-3xl w-full mx-auto">
       <template x-for="(m, i) in messages" :key="i">
-        <div
-          class="max-w-[80%] px-3.5 py-2.5 rounded-2xl text-[14.5px] leading-relaxed whitespace-pre-wrap break-words"
-          :class="{
-            'self-end bg-blue-900/40 rounded-br-sm': m.role === 'user',
-            'self-start bg-panel2 border border-border rounded-bl-sm': m.role === 'bot',
-            'self-start text-muted italic': m.role === 'typing',
-            'self-start border border-red-900 text-red-300': m.role === 'error',
-          }"
-        >
-          <span x-text="m.text"></span>
-          <button
-            x-show="m.audio"
-            @click="playAudio(m.audio)"
-            type="button"
-            class="block mt-1.5 text-xs text-accent hover:underline"
-          >▶ escuchar</button>
+        <div class="flex flex-col" :class="m.role === 'user' ? 'items-end' : 'items-start'">
+          <div
+            class="max-w-[82%] sm:max-w-[80%] px-3.5 py-2.5 rounded-[18px] text-[15px] leading-relaxed whitespace-pre-wrap break-words shadow-sm"
+            :class="{
+              'bg-accent text-bg rounded-br-[4px]': m.role === 'user',
+              'bg-panel2 border border-border rounded-bl-[4px]': m.role === 'bot',
+              'text-muted italic bg-transparent px-1': m.role === 'typing',
+              'border border-red-900 text-red-300': m.role === 'error',
+            }"
+          >
+            <span x-text="m.text"></span>
+            <button
+              x-show="m.audio"
+              @click="playAudio(m.audio)"
+              type="button"
+              class="block mt-1.5 text-xs opacity-80 hover:opacity-100 hover:underline"
+            >▶ escuchar</button>
+          </div>
+          <span x-show="m.time" class="text-[10.5px] text-muted mt-1 px-1" x-text="m.time"></span>
         </div>
       </template>
     </div>
-    <form @submit.prevent="send()" class="border-t border-border px-3 sm:px-5 py-3 flex gap-2 sm:gap-2.5 max-w-3xl w-full mx-auto shrink-0">
-      <textarea
-        x-ref="input"
-        x-model="draft"
-        @keydown.enter.prevent="if (!$event.shiftKey) send()"
-        rows="1"
-        placeholder="Escribí algo... (Enter para mandar, Shift+Enter salto de línea)"
-        class="flex-1 resize-none bg-panel border border-border rounded-xl text-gray-200 px-3 py-2.5 text-[14.5px] max-h-36 focus:outline-none focus:border-accent"
-      ></textarea>
+    <form @submit.prevent="send()" class="px-3 sm:px-5 pt-2 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2 max-w-3xl w-full mx-auto shrink-0">
+      <div class="flex-1 flex items-end gap-1 bg-panel border border-border rounded-3xl pl-4 pr-1.5 py-1.5 focus-within:border-accent">
+        <textarea
+          x-ref="input"
+          x-model="draft"
+          @keydown.enter.prevent="if (!$event.shiftKey) send()"
+          rows="1"
+          placeholder="Mensaje"
+          class="flex-1 resize-none bg-transparent border-none text-gray-200 py-1.5 text-[15px] max-h-36 focus:outline-none"
+        ></textarea>
+        <button
+          x-show="voice.stt"
+          type="button"
+          @click="toggleRecording()"
+          :class="recording ? 'bg-red-500 text-white animate-pulse' : 'text-muted hover:text-gray-200'"
+          class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-base"
+          :title="recording ? 'Grabando... click para mandar' : 'Grabar nota de voz'"
+        >🎙️</button>
+      </div>
       <button
-        x-show="voice.stt"
-        type="button"
-        @click="toggleRecording()"
-        :class="recording ? 'bg-red-500 animate-pulse' : 'bg-panel2 hover:bg-panel2/70'"
-        class="rounded-xl px-3 text-sm shrink-0"
-        :title="recording ? 'Grabando... click para mandar' : 'Grabar nota de voz'"
-      >🎙️</button>
-      <button type="submit" :disabled="sending" class="bg-accent disabled:opacity-50 text-bg font-semibold rounded-xl px-3 sm:px-4 text-sm shrink-0">Enviar</button>
+        type="submit"
+        :disabled="sending || !draft.trim()"
+        class="w-11 h-11 rounded-full bg-accent disabled:opacity-40 disabled:cursor-default text-bg flex items-center justify-center shrink-0 transition"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 translate-x-[1px]">
+          <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+        </svg>
+      </button>
     </form>
   </main>
 
@@ -212,6 +226,22 @@
     </div>
   </main>
 
+  <!-- Bottom nav — solo mobile (md: la navegación vive arriba en el header).
+       Mismo patrón que WhatsApp/Telegram/iMessage: tabs de ícono+label fijos
+       abajo, con el safe-area de iOS respetado. -->
+  <nav class="md:hidden flex border-t border-border bg-panel shrink-0 pb-[env(safe-area-inset-bottom)]">
+    <template x-for="t in tabs" :key="t.id">
+      <button
+        @click="tab = t.id"
+        class="flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] transition"
+        :class="tab === t.id ? 'text-accent' : 'text-muted'"
+      >
+        <span class="text-[19px] leading-none" x-text="t.icon"></span>
+        <span x-text="t.label"></span>
+      </button>
+    </template>
+  </nav>
+
 <script src="/vendor/alpine.min.js" defer></script>
 <script>
 function escapeHtml(s) {
@@ -247,14 +277,14 @@ function robinApp() {
   return {
     tab: "chat",
     tabs: [
-      { id: "chat", label: "Chat" },
-      { id: "memory", label: "Memoria" },
-      { id: "reminders", label: "Recordatorios" },
-      { id: "usage", label: "Uso" },
+      { id: "chat", label: "Chat", icon: "💬" },
+      { id: "memory", label: "Memoria", icon: "📚" },
+      { id: "reminders", label: "Avisos", icon: "⏰" },
+      { id: "usage", label: "Uso", icon: "📊" },
     ],
 
     // chat
-    messages: [{ role: "bot", text: "Hola, soy Robin. Contame qué necesitás." }],
+    messages: [{ role: "bot", text: "Hola, soy Robin. Contame qué necesitás.", time: "" }],
     draft: "",
     sending: false,
 
@@ -401,6 +431,10 @@ function robinApp() {
       }
     },
 
+    formatTime() {
+      return new Date().toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
+    },
+
     scrollLog() {
       this.$nextTick(() => {
         if (this.$refs.log) this.$refs.log.scrollTop = this.$refs.log.scrollHeight;
@@ -410,7 +444,7 @@ function robinApp() {
     async send() {
       const text = this.draft.trim();
       if (!text || this.sending) return;
-      this.messages.push({ role: "user", text });
+      this.messages.push({ role: "user", text, time: this.formatTime() });
       this.draft = "";
       this.sending = true;
       this.scrollLog();
@@ -425,7 +459,11 @@ function robinApp() {
         });
         const data = await res.json();
         this.messages.pop(); // typing
-        this.messages.push({ role: res.ok ? "bot" : "error", text: res.ok ? data.reply : data.error || "Error" });
+        this.messages.push({
+          role: res.ok ? "bot" : "error",
+          text: res.ok ? data.reply : data.error || "Error",
+          time: this.formatTime(),
+        });
       } catch (e) {
         this.messages.pop();
         this.messages.push({ role: "error", text: "No pude conectar con el servidor." });
@@ -478,8 +516,9 @@ function robinApp() {
         if (!res.ok) {
           this.messages.push({ role: "error", text: data.error || "Error" });
         } else {
-          if (data.transcript) this.messages.push({ role: "user", text: `🎙️ "${data.transcript}"` });
-          this.messages.push({ role: "bot", text: data.reply, audio: data.audio || null });
+          const time = this.formatTime();
+          if (data.transcript) this.messages.push({ role: "user", text: `🎙️ "${data.transcript}"`, time });
+          this.messages.push({ role: "bot", text: data.reply, audio: data.audio || null, time });
           if (data.audio) this.playAudio(data.audio);
         }
       } catch (e) {
