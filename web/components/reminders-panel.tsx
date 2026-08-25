@@ -44,7 +44,7 @@ export function RemindersPanel() {
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-white">Recordatorios pendientes</h2>
+          <h2 className="text-base font-semibold text-white tracking-tight">Recordatorios pendientes</h2>
           <Button variant="ghost" size="sm" onClick={load} className="gap-1.5 text-xs">
             <RotateCw size={13} /> actualizar
           </Button>
@@ -52,7 +52,10 @@ export function RemindersPanel() {
         {reminders.length === 0 && <div className="text-sm text-muted">No hay recordatorios pendientes.</div>}
         <div className="flex flex-col gap-2.5">
           {reminders.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3">
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3"
+            >
               <div className="min-w-0">
                 <div className="text-sm text-gray-200 truncate">
                   {r.cron_expr && <span title={`cron: ${r.cron_expr}`}>🔁 </span>}

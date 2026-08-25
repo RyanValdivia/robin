@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Send } from "lucide-react";
+import { Mic, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,14 @@ function formatTime(): string {
 function playAudio(base64: string) {
   const audio = new Audio(`data:audio/ogg;base64,${base64}`);
   audio.play().catch((e) => console.error("no se pudo reproducir el audio:", e));
+}
+
+function BotAvatar() {
+  return (
+    <div className="w-6 h-6 rounded-md bg-gradient-to-br from-accent to-indigo-400 flex items-center justify-center shrink-0 shadow-sm shadow-accent/20">
+      <Sparkles size={12} className="text-white" strokeWidth={2.5} />
+    </div>
+  );
 }
 
 export function ChatPanel() {
@@ -144,29 +152,46 @@ export function ChatPanel() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div ref={logRef} className="flex-1 overflow-y-auto px-3 sm:px-5 py-5 flex flex-col gap-2.5 max-w-3xl w-full mx-auto">
+      <div ref={logRef} className="flex-1 overflow-y-auto px-3 sm:px-5 py-5 flex flex-col gap-3 max-w-3xl w-full mx-auto">
         {messages.map((m, i) => (
-          <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
-            <div
-              className={cn(
-                "max-w-[82%] sm:max-w-[80%] px-3.5 py-2.5 rounded-[18px] text-[15px] leading-relaxed whitespace-pre-wrap break-words shadow-sm",
-                m.role === "user" && "bg-accent text-accent-foreground rounded-br-[4px]",
-                m.role === "bot" && "bg-panel2 border border-border rounded-bl-[4px]",
-                m.role === "typing" && "text-muted italic bg-transparent px-1",
-                m.role === "error" && "border border-red-900 text-red-300",
-              )}
-            >
-              <span>{m.text}</span>
-              {m.audio && (
-                <button
-                  onClick={() => playAudio(m.audio!)}
-                  className="block mt-1.5 text-xs opacity-80 hover:opacity-100 hover:underline"
-                >
-                  ▶ escuchar
-                </button>
-              )}
+          <div
+            key={i}
+            className={cn(
+              "message-in flex items-end gap-2",
+              m.role === "user" ? "flex-row-reverse" : "flex-row",
+            )}
+          >
+            {(m.role === "bot" || m.role === "typing") && <BotAvatar />}
+            <div className={cn("flex flex-col max-w-[82%] sm:max-w-[75%]", m.role === "user" ? "items-end" : "items-start")}>
+              <div
+                className={cn(
+                  "px-3.5 py-2.5 rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap break-words",
+                  m.role === "user" && "bg-accent text-accent-foreground rounded-br-md shadow-sm shadow-accent/15",
+                  m.role === "bot" && "bg-panel2 border border-border/80 rounded-bl-md shadow-sm",
+                  m.role === "typing" && "bg-panel2 border border-border/80 rounded-bl-md py-3",
+                  m.role === "error" && "border border-red-900/60 bg-red-950/30 text-red-300 rounded-bl-md",
+                )}
+              >
+                {m.role === "typing" ? (
+                  <span className="typing-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                ) : (
+                  <span>{m.text}</span>
+                )}
+                {m.audio && (
+                  <button
+                    onClick={() => playAudio(m.audio!)}
+                    className="block mt-1.5 text-xs opacity-80 hover:opacity-100 hover:underline"
+                  >
+                    ▶ escuchar
+                  </button>
+                )}
+              </div>
+              {m.time && <span className="text-[10.5px] text-muted mt-1 px-1">{m.time}</span>}
             </div>
-            {m.time && <span className="text-[10.5px] text-muted mt-1 px-1">{m.time}</span>}
           </div>
         ))}
       </div>
@@ -178,7 +203,7 @@ export function ChatPanel() {
         }}
         className="px-3 sm:px-5 pt-2 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2 max-w-3xl w-full mx-auto shrink-0"
       >
-        <div className="flex-1 flex items-end gap-1 bg-panel border border-border rounded-3xl pl-4 pr-1.5 py-1.5 focus-within:border-accent">
+        <div className="flex-1 flex items-end gap-1 bg-panel border border-border rounded-3xl pl-4 pr-1.5 py-1.5 transition-shadow focus-within:border-accent/60 focus-within:shadow-[0_0_0_3px_hsl(var(--accent)/0.15)]">
           <Textarea
             ref={textareaRef}
             value={draft}

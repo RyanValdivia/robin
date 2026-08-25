@@ -58,7 +58,7 @@ export function UsagePanel() {
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white">Uso del router</h2>
+          <h2 className="text-base font-semibold text-white tracking-tight">Uso del router</h2>
           <Button variant="ghost" size="sm" onClick={load} className="gap-1.5 text-xs">
             <RotateCw size={13} /> actualizar
           </Button>
