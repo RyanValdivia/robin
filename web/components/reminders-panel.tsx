@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Reminder = { id: number; text: string; run_at: string };
+type Reminder = { id: number; text: string; run_at: string; cron_expr?: string | null };
 
 function formatDate(iso: string): string {
   try {
@@ -54,8 +54,13 @@ export function RemindersPanel() {
           {reminders.map((r) => (
             <div key={r.id} className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3">
               <div className="min-w-0">
-                <div className="text-sm text-gray-200 truncate">{r.text}</div>
-                <div className="text-xs text-muted">{formatDate(r.run_at)}</div>
+                <div className="text-sm text-gray-200 truncate">
+                  {r.cron_expr && <span title={`cron: ${r.cron_expr}`}>🔁 </span>}
+                  {r.text}
+                </div>
+                <div className="text-xs text-muted">
+                  {r.cron_expr ? `próximo: ${formatDate(r.run_at)}` : formatDate(r.run_at)}
+                </div>
               </div>
               <Button variant="destructive" size="sm" onClick={() => cancel(r.id)} className="shrink-0">
                 cancelar

@@ -54,26 +54,80 @@ export async function scheduleReminder(
   return id;
 }
 
+/**
+ * Programa un recordatorio recurrente — dispara repetido según `cronExpr`
+ * (formato cron de 5 campos: minuto hora día-mes mes día-semana, día-semana
+ * 0=domingo..6=sábado) hasta que se cancele. A diferencia de un recordatorio
+ * simple, la fila en `scheduled_tasks` NO pasa a 'sent' cuando dispara — se
+ * queda 'pending' para siempre (es el estado natural de algo recurrente),
+ * solo `cancelReminder` la saca de ahí. Mismo mecanismo que los resúmenes
+ * diario/semanal de `proactive.ts` (BullMQ `upsertJobScheduler`), pero acá
+ * el cron pattern lo define el usuario/Claude, no está fijo en el código.
+ */
+export async function scheduleRecurringReminder(
+  userId: number,
+  channel: string,
+  externalId: string,
+  text: string,
+  cronExpr: string,
+  tz = "America/Lima",
+): Promise<number> {
+  const payload: ReminderPayload = { channel, externalId, text };
+  const { rows } = await pool.query(
+    `INSERT INTO scheduled_tasks (user_id, kind, payload, cron_expr, status)
+     VALUES ($1, 'recurring_reminder', $2, $3, 'pending') RETURNING id`,
+    [userId, JSON.stringify(payload), cronExpr],
+  );
+  const id = rows[0].id as number;
+  // Mismo jobId/schedulerId "task-<id>" que un recordatorio simple, pero es
+  // seguro: el id sale de la misma secuencia serial de `scheduled_tasks`, una
+  // fila es o 'reminder' o 'recurring_reminder', nunca las dos — no colisiona.
+  await reminderQueue.upsertJobScheduler(`task-${id}`, { pattern: cronExpr, tz }, { name: "reminder", data: { taskId: id } });
+  return id;
+}
+
+/** Cancela un recordatorio (simple o recurrente) por id — cada uno se saca de BullMQ distinto (job puntual vs. job scheduler). */
 export async function cancelReminder(userId: number, taskId: number): Promise<boolean> {
+  const { rows: taskRows } = await pool.query(
+    `SELECT kind FROM scheduled_tasks WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
+    [taskId, userId],
+  );
+  if (taskRows.length === 0) return false;
   const { rows } = await pool.query(
     `UPDATE scheduled_tasks SET status = 'cancelled'
      WHERE id = $1 AND user_id = $2 AND status = 'pending' RETURNING id`,
     [taskId, userId],
   );
   if (rows.length === 0) return false;
-  await reminderQueue.remove(`task-${taskId}`);
+  if (taskRows[0].kind === "recurring_reminder") {
+    await reminderQueue.removeJobScheduler(`task-${taskId}`);
+  } else {
+    await reminderQueue.remove(`task-${taskId}`);
+  }
   return true;
 }
 
-export async function listPendingReminders(
-  userId: number,
-): Promise<Array<{ id: number; text: string; run_at: string }>> {
+export async function listPendingReminders(userId: number): Promise<
+  Array<{ id: number; text: string; run_at: string | null; cron_expr: string | null }>
+> {
   const { rows } = await pool.query(
-    `SELECT id, payload->>'text' AS text, run_at FROM scheduled_tasks
-     WHERE user_id = $1 AND status = 'pending' AND kind = 'reminder' ORDER BY run_at`,
+    `SELECT id, payload->>'text' AS text, run_at, cron_expr, kind FROM scheduled_tasks
+     WHERE user_id = $1 AND status = 'pending' AND kind IN ('reminder', 'recurring_reminder')
+     ORDER BY run_at NULLS LAST`,
     [userId],
   );
-  return rows;
+  // Para las recurrentes, `run_at` no significa nada (nunca se setea) — el
+  // próximo disparo real vive en BullMQ (el scheduler lo recalcula del cron
+  // cada vez), no en Postgres. Se completa acá para que la Web UI/tools no
+  // tengan que saber de esta diferencia.
+  return Promise.all(
+    rows.map(async (r) => {
+      if (r.kind !== "recurring_reminder") return { id: r.id, text: r.text, run_at: r.run_at, cron_expr: null };
+      const sched = await reminderQueue.getJobScheduler(`task-${r.id}`);
+      const next = sched?.next ? new Date(sched.next).toISOString() : null;
+      return { id: r.id, text: r.text, run_at: next, cron_expr: r.cron_expr };
+    }),
+  );
 }
 
 let worker: Worker | null = null;
@@ -93,7 +147,11 @@ export function startSchedulerWorker(): Worker {
       } else {
         console.error("[scheduler] disparó un recordatorio pero no hay outbound sender registrado");
       }
-      await pool.query(`UPDATE scheduled_tasks SET status = 'sent' WHERE id = $1`, [task.id]);
+      // Recurrente: se queda 'pending' — sigue disparando solo hasta que lo
+      // cancelen. Solo el recordatorio puntual pasa a 'sent' (dispara una vez).
+      if (task.kind !== "recurring_reminder") {
+        await pool.query(`UPDATE scheduled_tasks SET status = 'sent' WHERE id = $1`, [task.id]);
+      }
     },
     { connection: newConnection() },
   );

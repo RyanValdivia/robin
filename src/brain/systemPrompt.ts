@@ -21,10 +21,15 @@ Fecha/hora actual: ${limaStr} (zona horaria del usuario: America/Lima, UTC-5). U
 esta zona horaria para calcular fechas/horas de recordatorios, no la del servidor.
 
 ## Recordatorios
-- Tenés \`schedule_task\` para programar un recordatorio que se manda solo cuando llega
-  la hora (vos no seguís corriendo en ese momento) — necesita el texto y la fecha/hora en
-  ISO 8601, calculala vos a partir de la fecha/hora actual de arriba.
-- \`list_reminders\` / \`cancel_reminder\` para ver o cancelar los pendientes.
+- Tenés \`schedule_task\` para programar un recordatorio PUNTUAL (una sola vez) que se manda
+  solo cuando llega la hora (vos no seguís corriendo en ese momento) — necesita el texto y la
+  fecha/hora en ISO 8601, calculala vos a partir de la fecha/hora actual de arriba.
+- Tenés \`schedule_recurring_reminder\` para uno que se REPITE solo (cada viernes, todos los
+  días, etc.) hasta que lo cancelen — vos armás el patrón cron (5 campos, hora local del
+  usuario). Si piden "avisame 1 hora antes de X", primero resolvé la hora real de X y restale
+  vos esa hora antes de armar el cron — la tool no entiende "antes de", solo ejecuta el
+  horario que le des.
+- \`list_reminders\` / \`cancel_reminder\` para ver o cancelar los pendientes (ambos tipos).
 - Recordatorios simples ("recordame X a las 8") ya los resuelve el router antes de
   llegar a vos — si te llega uno acá es porque la fecha/hora no era trivial de parsear.
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { remember, searchMemory } from "./memory.ts";
 import { getOwnerUserId, resolveOwnerChannel } from "./auth.ts";
-import { scheduleReminder, cancelReminder, listPendingReminders } from "./scheduler.ts";
+import { scheduleReminder, scheduleRecurringReminder, cancelReminder, listPendingReminders } from "./scheduler.ts";
 
 const searchMemoryTool = tool(
   "search_memory",
@@ -70,23 +70,50 @@ const scheduleTaskTool = tool(
   },
 );
 
+const scheduleRecurringReminderTool = tool(
+  "schedule_recurring_reminder",
+  "Programa un recordatorio que se repite solo (semanal, diario, etc.) hasta que el " +
+    "usuario lo cancele — usalo para pedidos tipo 'recordame X todos los viernes a las 2pm' " +
+    "o 'todos los días a las 8'. Vos calculás el patrón cron (5 campos: minuto hora " +
+    "día-del-mes mes día-de-semana; día-de-semana 0=domingo..6=sábado, '*' = cualquiera). " +
+    "Ejemplos: 'cada viernes a las 14:00' -> '0 14 * * 5'; 'todos los días a las 8am' -> " +
+    "'0 8 * * *'; 'el 1 de cada mes a las 9' -> '0 9 1 * *'. Si piden 'avisame 1 hora antes " +
+    "de X' y X ya tiene hora conocida, restá vos esa hora antes de armar el cron — esta tool " +
+    "no sabe de 'antes de', solo ejecuta el horario que le des.",
+  {
+    text: z.string().describe("El texto del recordatorio, tal cual se le va a mandar al usuario cada vez"),
+    cron_expr: z.string().describe("Patrón cron de 5 campos, hora LOCAL del usuario (America/Lima), ej. '0 14 * * 5'"),
+  },
+  async ({ text, cron_expr }) => {
+    const owner = await resolveOwnerChannel();
+    if (!owner) {
+      return { content: [{ type: "text", text: "No encontré un canal registrado del dueño para notificar." }] };
+    }
+    const id = await scheduleRecurringReminder(owner.userId, owner.channel, owner.externalId, text, cron_expr);
+    return { content: [{ type: "text", text: `Programado recurrente (id ${id}, cron "${cron_expr}").` }] };
+  },
+);
+
 const listRemindersTool = tool(
   "list_reminders",
-  "Lista los recordatorios pendientes del dueño (no disparados todavía).",
+  "Lista los recordatorios pendientes del dueño (puntuales y recurrentes, no disparados/cancelados).",
   {},
   async () => {
     const userId = await getOwnerUserId();
     if (!userId) return { content: [{ type: "text", text: "No hay dueño configurado." }] };
     const rows = await listPendingReminders(userId);
     if (rows.length === 0) return { content: [{ type: "text", text: "No hay recordatorios pendientes." }] };
-    const text = rows.map((r) => `[${r.id}] ${r.run_at} — ${r.text}`).join("\n");
+    const text = rows
+      .map((r) => `[${r.id}] ${r.cron_expr ? `🔁 "${r.cron_expr}" (próximo: ${r.run_at})` : r.run_at} — ${r.text}`)
+      .join("\n");
     return { content: [{ type: "text", text }] };
   },
 );
 
 const cancelReminderTool = tool(
   "cancel_reminder",
-  "Cancela un recordatorio pendiente por su id (ver list_reminders).",
+  "Cancela un recordatorio pendiente por su id, puntual o recurrente (ver list_reminders) — " +
+    "a uno recurrente lo apaga para siempre, no salta solo la próxima vez.",
   { id: z.number().describe("id del recordatorio, de list_reminders") },
   async ({ id }) => {
     const userId = await getOwnerUserId();
@@ -99,5 +126,12 @@ const cancelReminderTool = tool(
 export const memoryMcpServer = createSdkMcpServer({
   name: "robin-memory",
   version: "0.1.0",
-  tools: [searchMemoryTool, rememberTool, scheduleTaskTool, listRemindersTool, cancelReminderTool],
+  tools: [
+    searchMemoryTool,
+    rememberTool,
+    scheduleTaskTool,
+    scheduleRecurringReminderTool,
+    listRemindersTool,
+    cancelReminderTool,
+  ],
 });

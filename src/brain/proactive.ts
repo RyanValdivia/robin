@@ -27,7 +27,10 @@ async function generateSummary(kind: SummaryKind): Promise<string> {
   const remindersText =
     reminders.length > 0
       ? reminders
-          .map((r) => `- ${r.text} (${new Date(r.run_at).toLocaleString("es-PE", { timeZone: "America/Lima" })})`)
+          .map((r) => {
+            const when = r.run_at ? new Date(r.run_at).toLocaleString("es-PE", { timeZone: "America/Lima" }) : "?";
+            return `- ${r.text} (${r.cron_expr ? `recurrente, próximo ${when}` : when})`;
+          })
           .join("\n")
       : "Sin recordatorios pendientes.";
 

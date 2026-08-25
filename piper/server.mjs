@@ -16,11 +16,20 @@ const PORT = process.env.PORT ?? 8000;
 const PIPER_BIN = process.env.PIPER_BIN ?? "/opt/piper/piper";
 const VOICES_DIR = process.env.PIPER_VOICES_DIR ?? "/voices";
 
-// Voz elegida: español mexicano, calidad "high" — no hay voz es_PE en el
-// catálogo de Piper; es_MX es el acento latam disponible más neutro para
-// oído peruano (vs. es_ES castellano). Ver memoria/projects/robin.md.
-const MODEL_NAME = "es_MX-claude-high";
-const MODEL_URL_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_MX/claude/high";
+// Voz: configurable por env var (PIPER_MODEL/PIPER_MODEL_URL_BASE) para no tener
+// que tocar código cada vez que se prueba otra — default es_ES-davefx-medium
+// (masculina confirmada). Se cambió desde es_MX-claude-high: era la única
+// voz masculina del catálogo es_MX pero el usuario la escuchó como femenina;
+// en es_MX no hay otra alternativa masculina (la única otra voz, "Ald", es
+// femenina documentada), así que para masculina confirmada tocó resignar el
+// acento latam por castellano. Ver memoria/projects/robin.md.
+const MODEL_NAME = process.env.PIPER_MODEL ?? "es_ES-davefx-medium";
+const MODEL_LANG = MODEL_NAME.split("-")[0]; // ej. "es_ES" de "es_ES-davefx-medium"
+const MODEL_VOICE = MODEL_NAME.split("-")[1]; // ej. "davefx"
+const MODEL_QUALITY = MODEL_NAME.split("-")[2]; // ej. "medium"
+const MODEL_URL_BASE =
+  process.env.PIPER_MODEL_URL_BASE ??
+  `https://huggingface.co/rhasspy/piper-voices/resolve/main/${MODEL_LANG.slice(0, 2)}/${MODEL_LANG}/${MODEL_VOICE}/${MODEL_QUALITY}`;
 const MODEL_PATH = `${VOICES_DIR}/${MODEL_NAME}.onnx`;
 const CONFIG_PATH = `${VOICES_DIR}/${MODEL_NAME}.onnx.json`;
 

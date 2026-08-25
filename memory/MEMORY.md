@@ -10,5 +10,6 @@ se lee bajo demanda (Grep/Read), no acá.
 - projects/robin.md — este proyecto: arquitectura y decisiones de diseño de Robin
 
 ## Infrastructure
+- infrastructure/vps.md — acceso SSH del VPS y layout de discos (root 45GB fijo vs disco grande 147GB en /var/lib/pterodactyl/volumes)
 
 ## Reference
