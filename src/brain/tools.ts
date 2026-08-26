@@ -5,7 +5,13 @@ import { z } from "zod";
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { remember, searchMemory, forget } from "./memory.ts";
 import { getOwnerUserId, resolveOwnerChannel } from "./auth.ts";
-import { scheduleReminder, scheduleRecurringReminder, cancelReminder, listPendingReminders } from "./scheduler.ts";
+import {
+  scheduleReminder,
+  scheduleRecurringReminder,
+  cancelReminder,
+  listPendingReminders,
+  ALL_CHANNELS,
+} from "./scheduler.ts";
 
 const searchMemoryTool = tool(
   "search_memory",
@@ -86,7 +92,7 @@ const scheduleTaskTool = tool(
     if (Number.isNaN(runAt.getTime())) {
       return { content: [{ type: "text", text: `Fecha inválida: ${run_at_iso}` }] };
     }
-    const id = await scheduleReminder(owner.userId, owner.channel, owner.externalId, text, runAt);
+    const id = await scheduleReminder(owner.userId, ALL_CHANNELS, text, runAt);
     return { content: [{ type: "text", text: `Programado (id ${id}) para ${runAt.toISOString()}.` }] };
   },
 );
@@ -110,7 +116,7 @@ const scheduleRecurringReminderTool = tool(
     if (!owner) {
       return { content: [{ type: "text", text: "No encontré un canal registrado del dueño para notificar." }] };
     }
-    const id = await scheduleRecurringReminder(owner.userId, owner.channel, owner.externalId, text, cron_expr);
+    const id = await scheduleRecurringReminder(owner.userId, ALL_CHANNELS, text, cron_expr);
     return { content: [{ type: "text", text: `Programado recurrente (id ${id}, cron "${cron_expr}").` }] };
   },
 );

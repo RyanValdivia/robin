@@ -5,7 +5,13 @@ import { RotateCw, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type Reminder = { id: number; text: string; run_at: string; cron_expr?: string | null };
+type Reminder = { id: number; text: string; run_at: string; cron_expr?: string | null; channels: string[] };
+
+const CHANNEL_LABEL: Record<string, string> = { web: "Navegador", telegram: "Telegram" };
+
+function channelsLabel(channels: string[]): string {
+  return channels.map((c) => CHANNEL_LABEL[c] ?? c).join(" + ");
+}
 
 const DOW = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
@@ -78,6 +84,7 @@ export function RemindersPanel({ active }: { active: boolean }) {
   const [when, setWhen] = useState(""); // datetime-local
   const [dow, setDow] = useState("*"); // '*' = diario, si no 0-6
   const [time, setTime] = useState("08:00");
+  const [channels, setChannels] = useState<string[]>(["web", "telegram"]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -199,7 +206,11 @@ export function RemindersPanel({ active }: { active: boolean }) {
       setError("Falta el texto.");
       return;
     }
-    const body: Record<string, string> = { text: text.trim() };
+    if (channels.length === 0) {
+      setError("Elegí al menos un canal.");
+      return;
+    }
+    const body: Record<string, unknown> = { text: text.trim(), channels };
     if (freq === "once") {
       if (!when) {
         setError("Falta fecha/hora.");
@@ -293,6 +304,28 @@ export function RemindersPanel({ active }: { active: boolean }) {
                 <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
               </div>
             )}
+            <div className="flex gap-4 text-sm text-gray-300">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={channels.includes("web")}
+                  onChange={(e) =>
+                    setChannels((cs) => (e.target.checked ? [...cs, "web"] : cs.filter((c) => c !== "web")))
+                  }
+                />
+                Navegador
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={channels.includes("telegram")}
+                  onChange={(e) =>
+                    setChannels((cs) => (e.target.checked ? [...cs, "telegram"] : cs.filter((c) => c !== "telegram")))
+                  }
+                />
+                Telegram
+              </label>
+            </div>
             <Button onClick={create} disabled={saving} size="sm" className="self-start">
               {saving ? "Creando..." : "Crear"}
             </Button>
@@ -353,8 +386,8 @@ function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number
   // "recurring": no hay grupo por día → mostrar próximo run relativo (día + hora).
   const subtitle =
     mode === "day"
-      ? `${fullDateLabel(r.run_at)} · no se repite`
-      : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)}`;
+      ? `${fullDateLabel(r.run_at)} · no se repite · ${channelsLabel(r.channels)}`
+      : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)} · ${channelsLabel(r.channels)}`;
   return (
     <div className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3">
       {mode === "day" && (

@@ -6,7 +6,7 @@
 // no dejar al usuario sin respuesta).
 import { searchMemory } from "./memory.ts";
 import { chatComplete, cheapLlmAvailable } from "./cheapLLM.ts";
-import { scheduleReminder } from "./scheduler.ts";
+import { scheduleReminder, ALL_CHANNELS } from "./scheduler.ts";
 import { logMessage } from "./usage.ts";
 import { logTurn } from "./conversationLog.ts";
 import { classifyHeuristic, GREETING_RE, TIME_RE, CALC_RE, REMINDER_AT_RE, REMINDER_IN_RE, type Category } from "./classifyHeuristic.ts";
@@ -89,7 +89,7 @@ async function tryScheduleDirectReminder(text: string, ctx?: RouteContext): Prom
     if (ampm?.toLowerCase() === "am" && hour === 12) hour = 0;
     if (hour > 23 || minute > 59) return null;
     const when = nextOccurrence(hour, minute, Boolean(tomorrow));
-    await scheduleReminder(ctx.userId, ctx.channel, ctx.externalId, body.trim(), when);
+    await scheduleReminder(ctx.userId, ALL_CHANNELS, body.trim(), when);
     return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-PE", { timeZone: TZ })}.`;
   }
 
@@ -99,7 +99,7 @@ async function tryScheduleDirectReminder(text: string, ctx?: RouteContext): Prom
     const amount = parseInt(amountStr, 10);
     const ms = /hora|hs/i.test(unit) ? amount * 3_600_000 : amount * 60_000;
     const when = new Date(Date.now() + ms);
-    await scheduleReminder(ctx.userId, ctx.channel, ctx.externalId, body.trim(), when);
+    await scheduleReminder(ctx.userId, ALL_CHANNELS, body.trim(), when);
     return `Listo, te aviso "${body.trim()}" el ${when.toLocaleString("es-ES")}.`;
   }
 

@@ -9,7 +9,13 @@ import { REDIS_URL } from "../config.ts";
 import { pool } from "../db.ts";
 import { sendWebPush } from "./webPush.ts";
 
-type ReminderPayload = { channel: string; externalId: string; text: string };
+// `channels` = a qué canales se manda cuando dispare (independiente del canal
+// donde se creó el recordatorio). `channel`/`externalId` quedan solo para leer
+// filas viejas (pre-multicanal) — ver worker más abajo.
+type ReminderPayload = { channels?: string[]; channel?: string; externalId?: string; text: string };
+
+/** Canales soportados hoy. Default cuando no se especifica: todos. */
+export const ALL_CHANNELS = ["web", "telegram"] as const;
 
 // BullMQ exige maxRetriesPerRequest:null para los comandos bloqueantes del
 // Worker — conexión aparte de la que usa el resto de la app (src/redis.ts).
@@ -37,12 +43,11 @@ export function getOutboundSender(): OutboundSender | null {
 /** Programa un recordatorio simple — sin LLM, ni al crear (llamado por el router DIRECT) ni al disparar. */
 export async function scheduleReminder(
   userId: number,
-  channel: string,
-  externalId: string,
+  channels: readonly string[],
   text: string,
   runAt: Date,
 ): Promise<number> {
-  const payload: ReminderPayload = { channel, externalId, text };
+  const payload: ReminderPayload = { channels: [...channels], text };
   const { rows } = await pool.query(
     `INSERT INTO scheduled_tasks (user_id, kind, payload, run_at, status)
      VALUES ($1, 'reminder', $2, $3, 'pending') RETURNING id`,
@@ -75,13 +80,12 @@ export async function scheduleReminder(
  */
 export async function scheduleRecurringReminder(
   userId: number,
-  channel: string,
-  externalId: string,
+  channels: readonly string[],
   text: string,
   cronExpr: string,
   tz = "America/Lima",
 ): Promise<number> {
-  const payload: ReminderPayload = { channel, externalId, text };
+  const payload: ReminderPayload = { channels: [...channels], text };
   const { rows } = await pool.query(
     `INSERT INTO scheduled_tasks (user_id, kind, payload, cron_expr, status)
      VALUES ($1, 'recurring_reminder', $2, $3, 'pending') RETURNING id`,
@@ -121,10 +125,10 @@ export async function cancelReminder(userId: number, taskId: number): Promise<bo
 }
 
 export async function listPendingReminders(userId: number): Promise<
-  Array<{ id: number; text: string; run_at: string | null; cron_expr: string | null }>
+  Array<{ id: number; text: string; run_at: string | null; cron_expr: string | null; channels: string[] }>
 > {
   const { rows } = await pool.query(
-    `SELECT id, payload->>'text' AS text, run_at, cron_expr, kind FROM scheduled_tasks
+    `SELECT id, payload, run_at, cron_expr, kind FROM scheduled_tasks
      WHERE user_id = $1 AND status = 'pending' AND kind IN ('reminder', 'recurring_reminder')
      ORDER BY run_at NULLS LAST`,
     [userId],
@@ -135,10 +139,14 @@ export async function listPendingReminders(userId: number): Promise<
   // tengan que saber de esta diferencia.
   return Promise.all(
     rows.map(async (r) => {
-      if (r.kind !== "recurring_reminder") return { id: r.id, text: r.text, run_at: r.run_at, cron_expr: null };
+      const payload = r.payload as ReminderPayload;
+      const channels = payload.channels ?? (payload.channel ? [payload.channel] : ["web"]);
+      if (r.kind !== "recurring_reminder") {
+        return { id: r.id, text: payload.text, run_at: r.run_at, cron_expr: null, channels };
+      }
       const sched = await reminderQueue.getJobScheduler(`task-${r.id}`);
       const next = sched?.next ? new Date(sched.next).toISOString() : null;
-      return { id: r.id, text: r.text, run_at: next, cron_expr: r.cron_expr };
+      return { id: r.id, text: payload.text, run_at: next, cron_expr: r.cron_expr, channels };
     }),
   );
 }
@@ -163,6 +171,15 @@ export async function recentWebNotifications(userId: number): Promise<Array<{ id
   return rows;
 }
 
+/** external_id del usuario para un canal dado (ej. chat id de Telegram) — mismo mapeo que auth.ts. */
+async function externalIdFor(userId: number, channel: string): Promise<string | null> {
+  const { rows } = await pool.query<{ external_id: string }>(
+    `SELECT external_id FROM channel_identities WHERE user_id = $1 AND channel = $2 LIMIT 1`,
+    [userId, channel],
+  );
+  return rows[0]?.external_id ?? null;
+}
+
 let worker: Worker | null = null;
 
 /** Arranca el worker que procesa recordatorios cuando llega su hora. Llamar una vez por proceso. */
@@ -175,50 +192,55 @@ export function startSchedulerWorker(): Worker {
       const task = rows[0];
       if (!task || task.status !== "pending") return; // cancelado o ya procesado
       const payload = task.payload as ReminderPayload;
-      // INSERT en web_notifications + UPDATE de status van en una sola
-      // transacción: ahora que el job reintenta (attempts/backoff más abajo),
-      // si el INSERT ya corrió pero el UPDATE falla por un hiccup de DB, sin
-      // esto el reintento repetiría el INSERT y el usuario vería la
-      // notificación duplicada. Atómico = o pasan los dos, o ninguno (y el
-      // job entero reintenta limpio).
-      if (payload.channel === "web") {
-        const client = await pool.connect();
+      // Filas viejas (pre-multicanal) solo tienen `channel` — se leen igual.
+      const channels = payload.channels ?? (payload.channel ? [payload.channel] : ["web"]);
+
+      // Cada canal se manda por separado con su propio try/catch: si uno
+      // falla (ej. Telegram caído) no debe tumbar a los demás, y sobre todo
+      // no debe hacer que el job ENTERO reintente — eso repetiría el envío a
+      // los canales que sí salieron bien (notificación duplicada). El
+      // attempts/backoff de más abajo queda como red para fallas de
+      // infraestructura (ej. ni pudo leer `task` de Postgres), no para esto.
+      for (const channel of channels) {
         try {
-          await client.query("BEGIN");
-          // Web no tiene un sendMessage() como Telegram (registerOutboundSender
-          // es una función en memoria del proceso que registra el adapter, y
-          // el worker corre en el proceso de Telegram — un "sender" de Web ahí
-          // no tendría a quién llamar). En vez de eso, la fila queda para que
-          // el navegador la levante por polling (ver api/web-notifications) —
-          // fallback que sigue funcionando aunque no haya suscripción de push
-          // o esté deshabilitado (sin VAPID_* configuradas).
-          await client.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
-            task.user_id,
-            payload.text,
-          ]);
-          if (task.kind !== "recurring_reminder") {
-            await client.query(`UPDATE scheduled_tasks SET status = 'sent' WHERE id = $1`, [task.id]);
+          if (channel === "web") {
+            // Web no tiene un sendMessage() como Telegram (registerOutboundSender
+            // es una función en memoria del proceso que registra el adapter, y
+            // el worker corre en el proceso de Telegram — un "sender" de Web ahí
+            // no tendría a quién llamar). En vez de eso, la fila queda para que
+            // el navegador la levante por polling (ver api/web-notifications) —
+            // fallback que sigue funcionando aunque no haya suscripción de push
+            // o esté deshabilitado (sin VAPID_* configuradas).
+            await pool.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
+              task.user_id,
+              payload.text,
+            ]);
+            // Push real (OS-level, funciona con la pestaña/navegador cerrado) —
+            // best-effort: si falla o no hay suscripciones, el polling de
+            // arriba igual entrega el recordatorio la próxima vez que se abra
+            // la Web.
+            await sendWebPush(task.user_id, payload.text).catch((err) =>
+              console.error("[scheduler] error mandando web push:", err),
+            );
+            continue;
           }
-          await client.query("COMMIT");
+          // Canal no-web (hoy: telegram) — el external_id se resuelve acá, no
+          // al crear el recordatorio, para no depender de dónde se creó (un
+          // recordatorio hecho desde la Web igual puede avisar por Telegram).
+          // La fila vieja (`payload.externalId`) se reusa solo si coincide con
+          // este mismo canal; si no, se busca en channel_identities.
+          const legacyExternalId = payload.channel === channel ? (payload.externalId ?? null) : null;
+          const resolvedExternalId = legacyExternalId ?? (await externalIdFor(task.user_id, channel));
+          if (!resolvedExternalId || !sender) {
+            console.error(
+              `[scheduler] no puedo mandar por "${channel}": ${!sender ? "sin sender registrado" : "sin external_id vinculado"}`,
+            );
+            continue;
+          }
+          await sender(channel, resolvedExternalId, `⏰ ${payload.text}`);
         } catch (err) {
-          await client.query("ROLLBACK");
-          throw err;
-        } finally {
-          client.release();
+          console.error(`[scheduler] error mandando recordatorio por "${channel}":`, err);
         }
-        // Push real (OS-level, funciona con la pestaña/navegador cerrado) —
-        // best-effort, fuera de la transacción (llamada de red, no de DB): si
-        // falla o no hay suscripciones, el polling de arriba igual entrega el
-        // recordatorio la próxima vez que se abra la Web.
-        await sendWebPush(task.user_id, payload.text).catch((err) =>
-          console.error("[scheduler] error mandando web push:", err),
-        );
-        return;
-      }
-      if (sender) {
-        await sender(payload.channel, payload.externalId, `⏰ ${payload.text}`);
-      } else {
-        console.error("[scheduler] disparó un recordatorio pero no hay outbound sender registrado");
       }
       // Recurrente: se queda 'pending' — sigue disparando solo hasta que lo
       // cancelen. Solo el recordatorio puntual pasa a 'sent' (dispara una vez).
