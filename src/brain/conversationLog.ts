@@ -73,15 +73,28 @@ export async function getConversationHistory(
   return rows;
 }
 
+// Tope de filas de `messages` por conversación — sin esto la tabla crece
+// para siempre (nadie más la poda; el LIMIT de getConversationHistory solo
+// filtra qué se MUESTRA, no borra nada). 1000 filas = 500 turnos, bastante
+// margen sobre lo que getRecentUserMessages (proactive.ts, resumen semanal,
+// hasta 168h) necesita ver hacia atrás.
+const MESSAGE_HISTORY_CAP = 1000;
+
 /** Guarda el turno completo (mensaje del usuario + respuesta) de routeMessage() — fire-and-forget. */
 export function logTurn(ctx: RouteContext, category: string, userText: string, assistantText: string): void {
   getOrCreateConversation(ctx)
-    .then((conversationId) =>
-      pool.query(
+    .then(async (conversationId) => {
+      await pool.query(
         `INSERT INTO messages (conversation_id, role, content)
          VALUES ($1, 'user', $2), ($1, 'assistant', $3)`,
         [conversationId, JSON.stringify({ text: userText, category }), JSON.stringify({ text: assistantText })],
-      ),
-    )
+      );
+      await pool.query(
+        `DELETE FROM messages WHERE conversation_id = $1 AND id NOT IN (
+           SELECT id FROM messages WHERE conversation_id = $1 ORDER BY id DESC LIMIT $2
+         )`,
+        [conversationId, MESSAGE_HISTORY_CAP],
+      );
+    })
     .catch((err) => console.error("[conversationLog] no pude persistir el turno:", err));
 }
