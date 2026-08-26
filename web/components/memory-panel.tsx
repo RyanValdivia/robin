@@ -16,7 +16,7 @@ const TYPES = ["user", "project", "infrastructure", "reference"] as const;
 
 const emptyForm = { relative_path: "", type: "user" as string, name: "", description: "", content: "" };
 
-export function MemoryPanel() {
+export function MemoryPanel({ active }: { active: boolean }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Note | null>(null);
   const [rawContent, setRawContent] = useState("");
@@ -40,7 +40,12 @@ export function MemoryPanel() {
       .catch(() => {});
   }
 
-  useEffect(loadNotes, []);
+  // Refetch al activarse la tab (no solo al montar) — mismo motivo que
+  // reminders-panel.tsx: el panel queda montado siempre, una nota creada por
+  // chat/`remember()` mientras estabas en otra tab no aparecía sin recargar.
+  useEffect(() => {
+    if (active) loadNotes();
+  }, [active]);
 
   const groups = useMemo(() => {
     const byType = new Map<string, Note[]>();

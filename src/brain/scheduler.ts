@@ -51,7 +51,15 @@ export async function scheduleReminder(
   const id = rows[0].id as number;
   const delay = Math.max(0, runAt.getTime() - Date.now());
   // BullMQ v6 rechaza ":" en jobId custom ("Custom Id cannot contain :") -> "-".
-  await reminderQueue.add("reminder", { taskId: id }, { delay, jobId: `task-${id}` });
+  // attempts/backoff: sin esto, un error transitorio en el momento del disparo
+  // (ej. tabla recién migrada, hiccup de red) mata la entrega para siempre —
+  // pasó en vivo (job "task-5" perdido por una carrera con la migración de
+  // schema durante un deploy).
+  await reminderQueue.add(
+    "reminder",
+    { taskId: id },
+    { delay, jobId: `task-${id}`, attempts: 3, backoff: { type: "exponential", delay: 5000 } },
+  );
   return id;
 }
 
@@ -83,7 +91,11 @@ export async function scheduleRecurringReminder(
   // Mismo jobId/schedulerId "task-<id>" que un recordatorio simple, pero es
   // seguro: el id sale de la misma secuencia serial de `scheduled_tasks`, una
   // fila es o 'reminder' o 'recurring_reminder', nunca las dos — no colisiona.
-  await reminderQueue.upsertJobScheduler(`task-${id}`, { pattern: cronExpr, tz }, { name: "reminder", data: { taskId: id } });
+  await reminderQueue.upsertJobScheduler(
+    `task-${id}`,
+    { pattern: cronExpr, tz },
+    { name: "reminder", data: { taskId: id }, opts: { attempts: 3, backoff: { type: "exponential", delay: 5000 } } },
+  );
   return id;
 }
 
@@ -163,25 +175,47 @@ export function startSchedulerWorker(): Worker {
       const task = rows[0];
       if (!task || task.status !== "pending") return; // cancelado o ya procesado
       const payload = task.payload as ReminderPayload;
+      // INSERT en web_notifications + UPDATE de status van en una sola
+      // transacción: ahora que el job reintenta (attempts/backoff más abajo),
+      // si el INSERT ya corrió pero el UPDATE falla por un hiccup de DB, sin
+      // esto el reintento repetiría el INSERT y el usuario vería la
+      // notificación duplicada. Atómico = o pasan los dos, o ninguno (y el
+      // job entero reintenta limpio).
       if (payload.channel === "web") {
-        // Web no tiene un sendMessage() como Telegram (registerOutboundSender
-        // es una función en memoria del proceso que registra el adapter, y
-        // el worker corre en el proceso de Telegram — un "sender" de Web ahí
-        // no tendría a quién llamar). En vez de eso, la fila queda para que
-        // el navegador la levante por polling (ver api/web-notifications) —
-        // fallback que sigue funcionando aunque no haya suscripción de push
-        // o esté deshabilitado (sin VAPID_* configuradas).
-        await pool.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
-          task.user_id,
-          payload.text,
-        ]);
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          // Web no tiene un sendMessage() como Telegram (registerOutboundSender
+          // es una función en memoria del proceso que registra el adapter, y
+          // el worker corre en el proceso de Telegram — un "sender" de Web ahí
+          // no tendría a quién llamar). En vez de eso, la fila queda para que
+          // el navegador la levante por polling (ver api/web-notifications) —
+          // fallback que sigue funcionando aunque no haya suscripción de push
+          // o esté deshabilitado (sin VAPID_* configuradas).
+          await client.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
+            task.user_id,
+            payload.text,
+          ]);
+          if (task.kind !== "recurring_reminder") {
+            await client.query(`UPDATE scheduled_tasks SET status = 'sent' WHERE id = $1`, [task.id]);
+          }
+          await client.query("COMMIT");
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
         // Push real (OS-level, funciona con la pestaña/navegador cerrado) —
-        // best-effort: si falla o no hay suscripciones, el polling de arriba
-        // igual entrega el recordatorio la próxima vez que se abra la Web.
+        // best-effort, fuera de la transacción (llamada de red, no de DB): si
+        // falla o no hay suscripciones, el polling de arriba igual entrega el
+        // recordatorio la próxima vez que se abra la Web.
         await sendWebPush(task.user_id, payload.text).catch((err) =>
           console.error("[scheduler] error mandando web push:", err),
         );
-      } else if (sender) {
+        return;
+      }
+      if (sender) {
         await sender(payload.channel, payload.externalId, `⏰ ${payload.text}`);
       } else {
         console.error("[scheduler] disparó un recordatorio pero no hay outbound sender registrado");

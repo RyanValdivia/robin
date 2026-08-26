@@ -22,7 +22,7 @@ const CATEGORIES = [
 
 const numberFormat = new Intl.NumberFormat("es-PE");
 
-export function UsagePanel() {
+export function UsagePanel({ active }: { active: boolean }) {
   const [usage, setUsage] = useState<Usage>(EMPTY_USAGE);
 
   async function load() {
@@ -40,9 +40,10 @@ export function UsagePanel() {
     }
   }
 
+  // Refetch al activarse la tab — mismo motivo que reminders-panel.tsx.
   useEffect(() => {
-    load();
-  }, []);
+    if (active) load();
+  }, [active]);
 
   function count(id: string, list: CategoryCount[]): number {
     return list.find((m) => m.category === id)?.count ?? 0;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { MessageCircle, BookOpen, AlarmClock, BarChart3 } from "lucide-react";
 import { ChatPanel } from "@/components/chat-panel";
 import { MemoryPanel } from "@/components/memory-panel";
@@ -9,10 +10,10 @@ import { UsagePanel } from "@/components/usage-panel";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "chat", label: "Chat", icon: MessageCircle },
-  { id: "memory", label: "Memoria", icon: BookOpen },
-  { id: "reminders", label: "Avisos", icon: AlarmClock },
-  { id: "usage", label: "Uso", icon: BarChart3 },
+  { id: "chat", label: "Chat", icon: MessageCircle, href: "/chat" },
+  { id: "memory", label: "Memoria", icon: BookOpen, href: "/memoria" },
+  { id: "reminders", label: "Avisos", icon: AlarmClock, href: "/avisos" },
+  { id: "usage", label: "Uso", icon: BarChart3, href: "/uso" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -29,8 +30,16 @@ function Brand() {
   );
 }
 
+// Cada tab vive en su propia URL (/chat, /memoria, /avisos, /uso) — pero los
+// PANELES quedan siempre montados acá (visibilidad por CSS, como antes), no
+// por tab === page.tsx: si el panel se desmontara al navegar, ChatPanel
+// perdería el historial en memoria de la conversación (no hay GET de mensajes
+// al montar, es todo estado local). Las 4 rutas bajo app/ existen solo para
+// que la URL/back-forward/bookmark funcionen — su page.tsx no renderiza nada,
+// el contenido real es este layout leyendo el pathname.
 export function AppShell() {
-  const [tab, setTab] = useState<TabId>("chat");
+  const pathname = usePathname();
+  const tab: TabId = TABS.find((t) => t.href === pathname)?.id ?? "chat";
 
   return (
     <div className="h-dvh flex flex-col bg-bg">
@@ -49,9 +58,9 @@ export function AppShell() {
             const Icon = t.icon;
             const active = tab === t.id;
             return (
-              <button
+              <Link
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                href={t.href}
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors duration-150",
                   active ? "bg-panel2 text-white" : "text-muted hover:bg-panel2/60 hover:text-gray-200",
@@ -59,7 +68,7 @@ export function AppShell() {
               >
                 <Icon size={17} strokeWidth={2} className={active ? "text-accent" : ""} />
                 {t.label}
-              </button>
+              </Link>
             );
           })}
         </nav>
@@ -69,13 +78,13 @@ export function AppShell() {
             <ChatPanel />
           </div>
           <div className={cn("h-full", tab !== "memory" && "hidden")}>
-            <MemoryPanel />
+            <MemoryPanel active={tab === "memory"} />
           </div>
           <div className={cn("h-full", tab !== "reminders" && "hidden")}>
-            <RemindersPanel />
+            <RemindersPanel active={tab === "reminders"} />
           </div>
           <div className={cn("h-full", tab !== "usage" && "hidden")}>
-            <UsagePanel />
+            <UsagePanel active={tab === "usage"} />
           </div>
         </div>
       </div>
@@ -88,9 +97,9 @@ export function AppShell() {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
-            <button
+            <Link
               key={t.id}
-              onClick={() => setTab(t.id)}
+              href={t.href}
               className={cn(
                 "flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] transition-colors duration-150",
                 active ? "text-accent" : "text-muted",
@@ -98,7 +107,7 @@ export function AppShell() {
             >
               <Icon size={20} strokeWidth={2} />
               <span>{t.label}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>

@@ -70,7 +70,7 @@ function fullDateLabel(iso: string): string {
   }
 }
 
-export function RemindersPanel() {
+export function RemindersPanel({ active }: { active: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
@@ -177,9 +177,13 @@ export function RemindersPanel() {
     }
   }
 
+  // Antes era `[]` (solo al montar) — como el panel queda montado siempre
+  // (ver app-shell.tsx, tabs no se desmontan al cambiar), un recordatorio
+  // creado por chat mientras estabas en otra tab nunca aparecía acá hasta
+  // recargar la página entera. Ahora refetch cada vez que la tab se activa.
   useEffect(() => {
-    load();
-  }, []);
+    if (active) load();
+  }, [active]);
 
   async function cancel(id: number) {
     try {
