@@ -7,6 +7,7 @@ import { memoryMcpServer } from "./tools.ts";
 import { buildMcpServers } from "./mcp.ts";
 import { bashGuardHook, makeToolAuditHook, compactionLogHook } from "./hooks.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
+import { limaNowISO } from "./time.ts";
 import { getOrCreateConversation } from "./conversationLog.ts";
 import type { RouteContext } from "./router.ts";
 
@@ -104,9 +105,18 @@ export function createBrainSession(ctx?: RouteContext): BrainSession {
   function send(text: string): Promise<string> {
     return new Promise((resolve) => {
       pending.resolve = resolve;
+      // La sesión (y su system prompt, ver systemPrompt.ts) vive todo el
+      // proceso — el "ahora" de arriba queda viejo apenas pasan minutos. Sin
+      // esto, Claude calculaba "en 2 minutos" a partir de una hora congelada
+      // en el arranque de la sesión: dos pedidos iguales en momentos
+      // distintos daban el MISMO run_at (a veces ya pasado -> el recordatorio
+      // disparaba de inmediato). Va en el content, no en `text` — así
+      // conversationLog/la UI siguen mostrando lo que el usuario tipeó, tal
+      // cual, sin este agregado.
+      const content = `<system-reminder>Fecha/hora actual: ${limaNowISO()} (America/Lima, UTC-5) — usá este valor, no el "al arrancar esta sesión" del prompt de sistema, para cualquier cálculo relativo.</system-reminder>\n\n${text}`;
       queue.push({
         type: "user" as const,
-        message: { role: "user" as const, content: text },
+        message: { role: "user" as const, content },
         parent_tool_use_id: null,
       });
       if (waker.fn) {

@@ -67,6 +67,22 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString("es-PE", { timeZone: "America/Lima", day: "numeric", month: "long" });
 }
 
+// Cuenta regresiva ("en 3 min", "en 2 h") — pensado para debuggear que el
+// server efectivamente calculó el run_at que corresponde (ver bug de sesión
+// con hora congelada, session.ts limaNowISO por mensaje).
+function countdownLabel(iso: string): string {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (diffMs <= 0) return "ya debería haber sonado";
+  const min = Math.round(diffMs / 60_000);
+  if (min < 1) return "en instantes";
+  if (min < 60) return `en ${min} min`;
+  const hours = Math.floor(min / 60);
+  const restMin = min % 60;
+  if (hours < 24) return restMin === 0 ? `en ${hours} h` : `en ${hours} h ${restMin} min`;
+  const days = Math.floor(hours / 24);
+  return `en ${days} d`;
+}
+
 // Fecha completa (día de semana + día + mes, sin año — recordatorios viven en el
 // corto plazo) para el subtítulo de cada fila, independiente del header del
 // grupo (que puede quedar fuera de vista al hacer scroll).
@@ -198,6 +214,17 @@ export function RemindersPanel({ active }: { active: boolean }) {
   // recargar la página entera. Ahora refetch cada vez que la tab se activa.
   useEffect(() => {
     if (active) load();
+  }, [active]);
+
+  // countdownLabel() lee Date.now() al renderizar — sin esto la cuenta
+  // regresiva de cada fila queda pegada al valor de cuando se hizo el último
+  // fetch (fetch nuevo no llega solo porque pasa el tiempo). Fuerza un
+  // re-render liviano cada 30s mientras la tab está activa, nada más.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
   }, [active]);
 
   async function cancel(id: number) {
@@ -412,8 +439,8 @@ function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number
   // "recurring": no hay grupo por día → mostrar próximo run relativo (día + hora).
   const subtitle =
     mode === "day"
-      ? `${fullDateLabel(r.run_at)} · no se repite · ${channelsLabel(r.channels)}`
-      : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)} · ${channelsLabel(r.channels)}`;
+      ? `${fullDateLabel(r.run_at)} · ${countdownLabel(r.run_at)} · no se repite · ${channelsLabel(r.channels)}`
+      : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)} (${countdownLabel(r.run_at)}) · ${channelsLabel(r.channels)}`;
   return (
     <div className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3">
       {mode === "day" && (

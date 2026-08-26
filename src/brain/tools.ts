@@ -92,8 +92,26 @@ const scheduleTaskTool = tool(
     if (Number.isNaN(runAt.getTime())) {
       return { content: [{ type: "text", text: `Fecha inválida: ${run_at_iso}` }] };
     }
+    // Si run_at ya pasó, casi seguro Claude calculó a partir de una hora
+    // vieja (ver session.ts, bug de la hora congelada en system prompt) —
+    // mejor rechazar y que recalcule con la hora fresca del último
+    // <system-reminder> que ya, disparar de una silenciosamente.
+    const msUntil = runAt.getTime() - Date.now();
+    if (msUntil <= 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `run_at_iso (${run_at_iso}) ya pasó — recalculá usando la fecha/hora del ÚLTIMO "Fecha/hora actual" que te mandé (no la de "al arrancar esta sesión" del prompt de sistema).`,
+          },
+        ],
+      };
+    }
     const id = await scheduleReminder(owner.userId, ALL_CHANNELS, text, runAt);
-    return { content: [{ type: "text", text: `Programado (id ${id}) para ${runAt.toISOString()}.` }] };
+    const minutes = Math.round(msUntil / 60_000);
+    return {
+      content: [{ type: "text", text: `Programado (id ${id}) para ${runAt.toISOString()} (en ${minutes} min).` }],
+    };
   },
 );
 

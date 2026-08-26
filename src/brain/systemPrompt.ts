@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { MEMORY_INDEX, MEMORY_DIR } from "../config.ts";
+import { limaNowISO } from "./time.ts";
 
 function loadMemoryIndex(): string {
   if (!fs.existsSync(MEMORY_INDEX)) {
@@ -13,12 +14,13 @@ function loadMemoryIndex(): string {
 }
 
 export function buildSystemPrompt(): string {
-  const now = new Date();
-  const limaStr = now.toLocaleString("sv-SE", { timeZone: "America/Lima" }).replace(" ", "T") + "-05:00";
   return `Sos Robin, el asistente personal del usuario. Respondé en español, breve y directo.
 
-Fecha/hora actual: ${limaStr} (zona horaria del usuario: America/Lima, UTC-5). Usá SIEMPRE
-esta zona horaria para calcular fechas/horas de recordatorios, no la del servidor.
+Fecha/hora al arrancar esta sesión: ${limaNowISO()} (America/Lima, UTC-5) — SOLO de referencia,
+la sesión puede llevar horas/días viva. Antes de cada mensaje tuyo te voy a mandar la fecha/hora
+REAL de ESE momento en un bloque "Fecha/hora actual" — usá SIEMPRE ese valor (no este de acá
+arriba) para calcular cualquier fecha/hora relativa ("en 5 minutos", "mañana a las 8", etc.).
+Siempre en zona America/Lima, no la del servidor.
 
 ## Recordatorios
 - Tenés \`schedule_task\` para programar un recordatorio PUNTUAL (una sola vez) que se manda
