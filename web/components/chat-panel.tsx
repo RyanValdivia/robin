@@ -232,7 +232,12 @@ export function ChatPanel() {
           e.preventDefault();
           send();
         }}
-        className="px-3 sm:px-5 pt-2 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2 max-w-3xl w-full mx-auto shrink-0"
+        // El safe-area-inset-bottom del notch/home-indicator ya lo reserva el
+        // bottom nav de mobile (siempre presente debajo de este panel, ver
+        // app-shell.tsx) — duplicarlo acá metía padding de más SOLO en la tab
+        // de Chat (las demás tabs no tienen footer propio), empujando el
+        // input más abajo/con más aire del que debería tener.
+        className="px-3 sm:px-5 pt-2 pb-2.5 flex items-end gap-2 max-w-3xl w-full mx-auto shrink-0"
       >
         <div className="flex-1 flex items-end gap-1 bg-panel border border-border rounded-3xl pl-4 pr-1.5 py-1.5 transition-shadow focus-within:border-accent/60 focus-within:shadow-[0_0_0_3px_hsl(var(--accent)/0.15)]">
           <Textarea

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageCircle, BookOpen, AlarmClock, BarChart3, Bell, CalendarDays } from "lucide-react";
@@ -46,8 +47,25 @@ export function AppShell() {
   const pathname = usePathname();
   const tab: TabId = TABS.find((t) => t.href === pathname)?.id ?? "chat";
 
+  // `100dvh` en teoría ya sigue el viewport dinámico, pero algunos navegadores
+  // (sobre todo mobile con el teclado abierto) no lo recalculan a tiempo —
+  // el campo de texto del Chat, pegado abajo por flex, terminaba quedando
+  // más abajo de lo debido (tapado por el teclado o con un hueco de más
+  // debajo). visualViewport.height es la fuente más confiable de "cuánto se
+  // ve de verdad ahora mismo" — se usa como override cuando está disponible,
+  // 100dvh queda de fallback (SSR / navegadores sin la API).
+  const [vh, setVh] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setVh(vv.height);
+    update();
+    vv.addEventListener("resize", update);
+    return () => vv.removeEventListener("resize", update);
+  }, []);
+
   return (
-    <div className="h-dvh flex flex-col bg-bg">
+    <div className="flex flex-col bg-bg" style={{ height: vh ? `${vh}px` : "100dvh" }}>
       {/* Header — angosto, con blur, mismo criterio que Linear/Claude
           (brand a la izquierda, sin ruido). La navegación vive en el rail
           lateral en desktop y en el bottom nav en mobile. */}
