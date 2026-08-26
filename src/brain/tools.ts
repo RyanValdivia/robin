@@ -1,4 +1,4 @@
-// Tools MCP propios de Robin: search_memory / remember / schedule_task.
+// Tools MCP propios de Robin: search_memory / remember / schedule_task / agenda.
 // Único camino de escritura al vault — reemplaza Write/Edit crudos así el
 // índice semántico (pgvector) nunca queda desincronizado de los archivos.
 import { z } from "zod";
@@ -12,6 +12,7 @@ import {
   listPendingReminders,
   ALL_CHANNELS,
 } from "./scheduler.ts";
+import { addAgendaBlock, listAgendaBlocks, removeAgendaBlock } from "./agenda.ts";
 
 const searchMemoryTool = tool(
   "search_memory",
@@ -168,6 +169,74 @@ const cancelReminderTool = tool(
   },
 );
 
+const DOW_NAMES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+const addAgendaBlockTool = tool(
+  "add_agenda_block",
+  "Agrega un bloque de horario OCUPADO a la agenda del dueño (clases, trabajo, lo que sea) — " +
+    "a diferencia de schedule_task/schedule_recurring_reminder, esto NUNCA manda un aviso, es " +
+    "solo para que quede registrado que a esa hora está ocupado (se ve en la tab Horario de la " +
+    "Web). Dale EXACTAMENTE uno de day_of_week (se repite todas las semanas ese día, ej. clases " +
+    "fijas) o date (una fecha puntual, no se repite, ej. un examen puntual).",
+  {
+    label: z.string().describe("Qué es el bloque, ej. 'Clase de cálculo', 'Trabajo'"),
+    start_time: z.string().describe("Hora de inicio HH:MM 24h, ej. '08:00'"),
+    end_time: z.string().describe("Hora de fin HH:MM 24h, ej. '10:00'"),
+    day_of_week: z.number().int().min(0).max(6).optional().describe("0=domingo..6=sábado — recurrente semanal"),
+    date: z.string().optional().describe("Fecha exacta ISO 'YYYY-MM-DD' — puntual, no se repite"),
+  },
+  async ({ label, start_time, end_time, day_of_week, date }) => {
+    const userId = await getOwnerUserId();
+    if (!userId) return { content: [{ type: "text", text: "No hay dueño configurado." }] };
+    if ((day_of_week === undefined) === (date === undefined)) {
+      return { content: [{ type: "text", text: "Dame EXACTAMENTE uno de day_of_week o date, no los dos ni ninguno." }] };
+    }
+    try {
+      const id = await addAgendaBlock(
+        userId,
+        label,
+        start_time,
+        end_time,
+        day_of_week !== undefined ? { dayOfWeek: day_of_week } : { date: date! },
+      );
+      return { content: [{ type: "text", text: `Agregado (id ${id}).` }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: `No pude agregarlo: ${(err as Error).message}` }] };
+    }
+  },
+);
+
+const listAgendaTool = tool(
+  "list_agenda",
+  "Lista todos los bloques de horario ocupado del dueño (agenda, no recordatorios).",
+  {},
+  async () => {
+    const userId = await getOwnerUserId();
+    if (!userId) return { content: [{ type: "text", text: "No hay dueño configurado." }] };
+    const rows = await listAgendaBlocks(userId);
+    if (rows.length === 0) return { content: [{ type: "text", text: "La agenda está vacía." }] };
+    const text = rows
+      .map((b) => {
+        const when = b.day_of_week !== null ? `cada ${DOW_NAMES[b.day_of_week]}` : b.date!;
+        return `[${b.id}] ${when} ${b.start_time.slice(0, 5)}-${b.end_time.slice(0, 5)} — ${b.label}`;
+      })
+      .join("\n");
+    return { content: [{ type: "text", text }] };
+  },
+);
+
+const removeAgendaBlockTool = tool(
+  "remove_agenda_block",
+  "Borra un bloque de la agenda por su id (ver list_agenda).",
+  { id: z.number().describe("id del bloque, de list_agenda") },
+  async ({ id }) => {
+    const userId = await getOwnerUserId();
+    if (!userId) return { content: [{ type: "text", text: "No hay dueño configurado." }] };
+    const ok = await removeAgendaBlock(userId, id);
+    return { content: [{ type: "text", text: ok ? `Borrado el bloque ${id}.` : `No encontré un bloque con id ${id}.` }] };
+  },
+);
+
 export const memoryMcpServer = createSdkMcpServer({
   name: "robin-memory",
   version: "0.1.0",
@@ -179,5 +248,8 @@ export const memoryMcpServer = createSdkMcpServer({
     scheduleRecurringReminderTool,
     listRemindersTool,
     cancelReminderTool,
+    addAgendaBlockTool,
+    listAgendaTool,
+    removeAgendaBlockTool,
   ],
 });

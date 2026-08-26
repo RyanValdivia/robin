@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, BookOpen, AlarmClock, BarChart3, Bell } from "lucide-react";
+import { MessageCircle, BookOpen, AlarmClock, BarChart3, Bell, CalendarDays } from "lucide-react";
 import { ChatPanel } from "@/components/chat-panel";
 import { MemoryPanel } from "@/components/memory-panel";
 import { RemindersPanel } from "@/components/reminders-panel";
 import { NotificationsPanel } from "@/components/notifications-panel";
+import { AgendaPanel } from "@/components/agenda-panel";
 import { UsagePanel } from "@/components/usage-panel";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,7 @@ const TABS = [
   { id: "memory", label: "Memoria", icon: BookOpen, href: "/memoria" },
   { id: "reminders", label: "Avisos", icon: AlarmClock, href: "/avisos" },
   { id: "notifications", label: "Notificaciones", icon: Bell, href: "/notificaciones" },
+  { id: "agenda", label: "Horario", icon: CalendarDays, href: "/horario" },
   { id: "usage", label: "Uso", icon: BarChart3, href: "/uso" },
 ] as const;
 
@@ -33,7 +35,7 @@ function Brand() {
 }
 
 // Cada tab vive en su propia URL (/chat, /memoria, /avisos, /notificaciones,
-// /uso) — pero los PANELES quedan siempre montados acá (visibilidad por CSS,
+// /horario, /uso) — pero los PANELES quedan siempre montados acá (visibilidad por CSS,
 // como antes), no por tab === page.tsx: si el panel se desmontara al navegar,
 // ChatPanel perdería el historial en memoria de la conversación (no hay GET
 // de mensajes al montar, es todo estado local) y NotificationsPanel dejaría
@@ -88,6 +90,9 @@ export function AppShell() {
           </div>
           <div className={cn("h-full", tab !== "notifications" && "hidden")}>
             <NotificationsPanel />
+          </div>
+          <div className={cn("h-full", tab !== "agenda" && "hidden")}>
+            <AgendaPanel active={tab === "agenda"} />
           </div>
           <div className={cn("h-full", tab !== "usage" && "hidden")}>
             <UsagePanel active={tab === "usage"} />

@@ -35,6 +35,15 @@ Siempre en zona America/Lima, no la del servidor.
 - Recordatorios simples ("recordame X a las 8") ya los resuelve el router antes de
   llegar a vos — si te llega uno acá es porque la fecha/hora no era trivial de parsear.
 
+## Agenda
+- \`add_agenda_block\` / \`list_agenda\` / \`remove_agenda_block\` — el horario fijo del
+  usuario (clases, trabajo, lo que sea), se ve en la tab Horario de la Web como una vista
+  semanal. A DIFERENCIA de los recordatorios de arriba, esto NUNCA manda un aviso — es
+  solo para que quede registrado que a esa hora está ocupado. Si el usuario dice "cada
+  lunes tengo clase de 8 a 10" o "quiero cargar mi horario", es esto, no schedule_task.
+  day_of_week = se repite todas las semanas (clases/trabajo fijo); date = una fecha
+  puntual que no se repite (ej. un examen). Nunca los dos juntos.
+
 ## Memoria
 - \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.
 - Para buscar algo que no está en el índice, usá la tool \`search_memory\` (combina

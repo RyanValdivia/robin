@@ -141,3 +141,25 @@ CREATE TABLE IF NOT EXISTS memory_links (
 );
 
 CREATE INDEX IF NOT EXISTS memory_links_from_idx ON memory_links (from_path);
+
+-- Agenda (horario fijo del usuario) — bloques de "estoy ocupado a esa hora",
+-- a diferencia de scheduled_tasks (recordatorios): esto NUNCA dispara un
+-- aviso, es solo referencia para mostrar en una vista de agenda semanal (ver
+-- brain/agenda.ts). Exactamente uno de day_of_week/date: recurrente semanal
+-- (día de semana, se repite indefinido, ej. clases/trabajo fijo) o puntual
+-- (fecha exacta, una sola vez, ej. un examen), nunca los dos ni ninguno.
+CREATE TABLE IF NOT EXISTS agenda_blocks (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  label        TEXT NOT NULL,
+  day_of_week  SMALLINT,  -- 0=domingo..6=sábado
+  date         DATE,
+  start_time   TIME NOT NULL,
+  end_time     TIME NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((day_of_week IS NOT NULL) <> (date IS NOT NULL)),
+  CHECK (day_of_week IS NULL OR (day_of_week BETWEEN 0 AND 6)),
+  CHECK (start_time < end_time)
+);
+
+CREATE INDEX IF NOT EXISTS agenda_blocks_user_idx ON agenda_blocks (user_id);
