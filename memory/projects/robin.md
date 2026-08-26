@@ -623,6 +623,43 @@ funcionando en producción. Deploy hecho por `git archive` a un tar local +
 `scp` + `tar -x` remoto (no `git archive | ssh ... tar -x` en un solo pipe —
 bloqueado por el clasificador; el mismo resultado en dos pasos sí pasó).
 
+## Web UI: memoria y recordatorios administrables directo (no solo por chat)
+
+Pedido explícito del usuario: todo lo de memoria/recordatorios visible Y
+administrable desde la Web, no solo por chat (aunque el chat sigue siendo la
+vía principal). Decisiones tomadas (preguntadas al usuario, no asumidas):
+editor de texto simple para notas (no un editor rico — mismo espíritu
+minimalista del resto de la Web UI), formulario de alta para recordatorios
+(puntual y recurrente), y calendario resuelto como lista agrupada por fecha
+(no una grilla de mes — de más para un solo usuario con pocos recordatorios).
+
+- **Memoria** (`memory-panel.tsx` + `api/memory/note`): antes solo lectura.
+  Ahora botón "nueva nota" + editar (raw markdown en un textarea, campos
+  ruta/tipo/nombre/descripción separados) + borrar, todo pisando por debajo
+  `remember()`/`forget()` — el mismo camino que ya usaba la tool de AGENT, así
+  el índice semántico (pgvector) y MEMORY.md nunca quedan desincronizados sea
+  cual sea el origen de la escritura (chat o Web).
+- **Recordatorios** (`reminders-panel.tsx` + `api/reminders` POST): antes solo
+  listar/cancelar. Ahora un formulario crea directo `scheduleReminder()`
+  (puntual, datetime-local) o `scheduleRecurringReminder()` (recurrente: día
+  de la semana + hora, arma el cron `M H * * D` en el cliente) — mismo
+  backend que las tools de AGENT, sin pasar por Claude para nada (acá la
+  fecha/cron ya vienen resueltos del formulario, no hay ambigüedad de
+  lenguaje natural que resolver).
+  Lista ahora agrupada: sección "Recurrentes" aparte, y los puntuales por
+  "Hoy"/"Mañana"/día de semana (si es en la semana)/fecha completa (más
+  lejos) — cálculo en hora Lima igual que `router.ts` (el navegador del
+  cliente puede estar en otro huso, así que se calcula con
+  `Intl.DateTimeFormat(..., {timeZone: "America/Lima"})`, no con la hora
+  local del browser).
+- `components/ui/input.tsx` nuevo — no existía (solo `Textarea`).
+- **Verificado en vivo (2026-08-25):** build+lint+typecheck limpios
+  (`next build` local y en el VPS). En producción: crear nota vía
+  `POST /api/memory/note` → aparece en `GET /api/memory` → `DELETE` la saca;
+  crear recordatorio vía `POST /api/reminders` (puntual) → aparece en
+  `GET /api/reminders` → `POST .../cancel` lo cancela. Los tres round-trips
+  probados contra la Web real del VPS, no solo localmente.
+
 ## Plan completo
 
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`
