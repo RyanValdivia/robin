@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCw, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,8 +95,11 @@ function fullDateLabel(iso: string): string {
   }
 }
 
+type FiredNotification = { id: number; text: string; time: string };
+
 export function RemindersPanel({ active }: { active: boolean }) {
   const [reminders, setReminders] = useState<Reminder[] | null>(null); // null = todavía no cargó
+  const [fired, setFired] = useState<FiredNotification[]>([]);
   const [linked, setLinked] = useState<string[]>(["web"]); // canales realmente vinculados (ver /api/reminders GET)
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
@@ -243,6 +246,39 @@ export function RemindersPanel({ active }: { active: boolean }) {
     if (active) load();
   }, [active]);
 
+  // Recordatorios ya disparados (canal 'web') — antes esto vivía en
+  // chat-panel.tsx y los mostraba como burbujas de chat, mezclados con la
+  // conversación real. Ahora tienen su sección propia acá. Sigue corriendo
+  // aunque el usuario esté en otra tab (RemindersPanel queda siempre montado,
+  // ver app-shell.tsx) — así llega igual aunque no estés mirando Avisos, y
+  // aparece apenas volvés. Los ids ya vistos quedan en un ref (no en el
+  // texto que le llega al server) — el endpoint devuelve por ventana de
+  // tiempo (15 min), no por "no leídas", para no pisarse entre pestañas.
+  const seenNotificationIds = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch("/api/web-notifications")
+        .then((r) => r.json())
+        .then((data) => {
+          const notifications: Array<{ id: number; text: string }> = data.notifications || [];
+          const fresh = notifications.filter((n) => !seenNotificationIds.current.has(n.id));
+          if (fresh.length === 0) return;
+          for (const n of fresh) seenNotificationIds.current.add(n.id);
+          const time = new Date().toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
+          setFired((f) => [...fresh.map((n) => ({ ...n, time })), ...f].slice(0, 20));
+          // Notificación real del sistema si ya hay permiso — no depende de
+          // tener push (VAPID) armado, solo de que el permiso esté concedido
+          // y esta pestaña siga abierta (para el caso de pestaña cerrada
+          // sigue estando el push real, ver reminders-panel push/*).
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            for (const n of fresh) new Notification("Robin ⏰", { body: n.text, tag: `robin-web-notif-${n.id}` });
+          }
+        })
+        .catch(() => {});
+    }, 20_000);
+    return () => clearInterval(id);
+  }, []);
+
   // countdownLabel() lee Date.now() al renderizar — sin esto la cuenta
   // regresiva de cada fila queda pegada al valor de cuando se hizo el último
   // fetch (fetch nuevo no llega solo porque pasa el tiempo). Fuerza un
@@ -335,6 +371,31 @@ export function RemindersPanel({ active }: { active: boolean }) {
             </Button>
           </div>
         </div>
+
+        {fired.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Notificaciones</span>
+              <button onClick={() => setFired([])} className="text-[11px] text-muted hover:text-gray-300">
+                Limpiar
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {fired.map((n) => (
+                <div
+                  key={n.id}
+                  className="flex items-start gap-2.5 bg-panel border border-accent/25 rounded-xl px-4 py-3"
+                >
+                  <span className="text-base leading-none mt-0.5">⏰</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-gray-200">{n.text}</div>
+                    <div className="text-xs text-muted">{n.time}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {showForm && (
           <div className="bg-panel border border-border rounded-xl p-4 mb-5 flex flex-col gap-4">
