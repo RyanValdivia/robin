@@ -752,6 +752,19 @@ después de que la primera tanda (#1-#7) ya estuviera en vivo.
     `scheduler.ts`, en vez de generalizar `registerOutboundSender` a un
     registro por canal. Aceptado (YAGNI) — no hay un tercer canal de entrega
     todavía que justifique la abstracción.
+- **Verificado en vivo (2026-08-26):** `npm test` corrido dentro del propio
+  contenedor `robin` en el VPS (15/15, no solo en la máquina de desarrollo).
+  `web_notifications` probado con dos polls seguidos al mismo endpoint — la
+  segunda sigue viendo la notificación (confirma el fix del race de
+  multi-pestaña). Mensaje DIRECT de control sin regresión.
+  **Gotcha de deploy encontrado:** migré el schema ANTES del rebuild de
+  `robin`/`web` — `docker compose exec robin node -e "...readFileSync('/app/db/schema.sql')..."`
+  lee el schema BAKEADO EN LA IMAGEN (`COPY db ./db` en el Dockerfile, no es
+  un volumen montado como `memory/`), así que ejecutarlo contra el contenedor
+  viejo leyó el schema de ANTES de este cambio (sin `web_notifications`) —
+  `42P01: undefined_table` al primer request real. Orden correcto: primero
+  `up -d --build`, recién después migrar (o migrar dos veces no rompe nada,
+  `CREATE TABLE IF NOT EXISTS` es idempotente — así se resolvió acá).
 
 ## Plan completo
 
