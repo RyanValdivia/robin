@@ -349,7 +349,7 @@ function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number
   // "recurring": no hay grupo por día → mostrar próximo run relativo (día + hora).
   const subtitle =
     mode === "day"
-      ? fullDateLabel(r.run_at)
+      ? `${fullDateLabel(r.run_at)} · no se repite`
       : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)}`;
   return (
     <div className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3">
