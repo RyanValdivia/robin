@@ -811,13 +811,24 @@ abierta).
   (`urlBase64ToUint8Array()`, nuevo helper) y postea la suscripción. Estados
   cubiertos: sin soporte del navegador, sin VAPID configurada en el server,
   permiso denegado, activado/desactivado.
-- **No verificado en vivo todavía** — falta: generar VAPID keys de prod
-  (las del `.env` local NO se reusan, son solo para dev), agregarlas a
-  `.env.prod` del VPS, migrar el schema (`web_push_subscriptions`) y
-  rebuildear `robin`+`web` — **mismo orden que el gotcha ya documentado
-  arriba: primero `up -d --build`, recién después migrar** (el schema que
-  lee `docker compose exec robin node -e "...schema.sql..."` es el
-  BAKEADO EN LA IMAGEN vieja si se corre antes del rebuild).
+- **Deployado y verificado en vivo (2026-08-26):** VPS no es un clone git
+  (deploy real es tar: `git archive` local -> `scp` -> `tar -x` remoto sobre
+  `~/server-data/robin`, mismo motivo que el gotcha ya documentado — pipe
+  `git archive | ssh ... tar -x` bloqueado por el clasificador de comandos
+  de la sesión). VAPID keys de PROD generadas aparte (no se reusan las de
+  `.env` local, esas quedan solo para dev) y agregadas a `.env.prod` del
+  VPS. Orden respetado: `docker compose up -d --build robin web` primero,
+  migración de schema después (`web_push_subscriptions` confirmada con
+  columnas correctas vía `information_schema.columns`).
+  Round-trip real contra el VPS: `GET /api/web-push/public-key` devuelve la
+  pública configurada, `GET /sw.js` sirve el service worker, y un
+  recordatorio creado vía `POST /api/reminders` con `run_at` a 8s disparó
+  limpio en los logs de `robin` (sin suscripciones todavía —
+  `sendWebPush()` no revienta con 0 filas, confirma el guard). Faltante real
+  (no verificable por SSH): una suscripción de push de un browser de verdad
+  — necesita que el usuario abra la Web y toque "Activar notificaciones" él
+  mismo, entrega real de notificación del SO es lo único que queda por
+  probar a mano.
 - Typecheck limpio (`tsc --noEmit` en `src/` y `web/`) y `npx next build`
   local sin errores (confirmado que `web-push` se traza y copia bien al
   standalone: `.next/standalone/node_modules/web-push` presente). `npm test`
