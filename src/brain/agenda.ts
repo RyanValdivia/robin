@@ -12,7 +12,12 @@ export type AgendaBlock = {
   date: string | null; // fecha puntual (YYYY-MM-DD), no se repite
   start_time: string; // "HH:MM:SS" (formato que devuelve TIME de Postgres)
   end_time: string;
+  teacher: string | null; // docente/responsable, opcional
+  description: string | null; // notas libres, opcional
 };
+
+/** Detalle opcional al crear un bloque — ninguno de los dos es obligatorio. */
+export type AgendaBlockExtra = { teacher?: string; description?: string };
 
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -30,6 +35,7 @@ export async function addAgendaBlock(
   startTime: string,
   endTime: string,
   recurrence: Recurrence,
+  extra: AgendaBlockExtra = {},
 ): Promise<number> {
   if (!label.trim()) throw new Error("falta la etiqueta del bloque");
   if (!isValidHHMM(startTime) || !isValidHHMM(endTime)) {
@@ -44,9 +50,18 @@ export async function addAgendaBlock(
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO agenda_blocks (user_id, label, day_of_week, date, start_time, end_time)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [userId, label.trim(), dayOfWeek, date, startTime, endTime],
+    `INSERT INTO agenda_blocks (user_id, label, day_of_week, date, start_time, end_time, teacher, description)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [
+      userId,
+      label.trim(),
+      dayOfWeek,
+      date,
+      startTime,
+      endTime,
+      extra.teacher?.trim() || null,
+      extra.description?.trim() || null,
+    ],
   );
   return rows[0].id as number;
 }
@@ -64,7 +79,8 @@ export async function listAgendaBlocks(userId: number): Promise<AgendaBlock[]> {
   // UTC) — al pasar por JSON.stringify corre el riesgo de mostrar el día anterior en
   // timezones negativos. Como string plano "YYYY-MM-DD" no hay conversión de por medio.
   const { rows } = await pool.query<AgendaBlock>(
-    `SELECT id, label, day_of_week, date::text AS date, start_time, end_time FROM agenda_blocks
+    `SELECT id, label, day_of_week, date::text AS date, start_time, end_time, teacher, description
+     FROM agenda_blocks
      WHERE user_id = $1 ORDER BY COALESCE(day_of_week, EXTRACT(DOW FROM date)::int), start_time`,
     [userId],
   );

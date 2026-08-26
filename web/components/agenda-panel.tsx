@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RotateCw, Plus, X, CalendarDays } from "lucide-react";
+import { RotateCw, Plus, X, CalendarDays, User, FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type AgendaBlock = {
@@ -15,6 +16,8 @@ type AgendaBlock = {
   date: string | null; // "YYYY-MM-DD"
   start_time: string; // "HH:MM:SS"
   end_time: string;
+  teacher: string | null;
+  description: string | null;
 };
 
 // Mismo orden que DOW_NAMES en tools.ts y el DOW de reminders-panel.tsx
@@ -118,8 +121,14 @@ export function AgendaPanel({ active }: { active: boolean }) {
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("09:00");
+  const [teacher, setTeacher] = useState("");
+  const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Antes un solo click en un bloque de la grilla lo borraba directo — un
+  // misclick se llevaba puesto un curso cargado. Ahora click abre el
+  // detalle (acá abajo) y borrar es una acción explícita adentro.
+  const [selected, setSelected] = useState<AgendaBlock | null>(null);
 
   async function load() {
     try {
@@ -152,6 +161,8 @@ export function AgendaPanel({ active }: { active: boolean }) {
       label: label.trim(),
       start_time: startTime,
       end_time: endTime,
+      teacher: teacher.trim(),
+      description: description.trim(),
       ...(freq === "recurring" ? { day_of_week: Number(dow) } : { date }),
     };
     setSaving(true);
@@ -169,6 +180,8 @@ export function AgendaPanel({ active }: { active: boolean }) {
       }
       setLabel("");
       setDate("");
+      setTeacher("");
+      setDescription("");
       setShowForm(false);
       await load();
     } catch {
@@ -181,6 +194,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
   async function remove(id: number) {
     try {
       await fetch(`/api/agenda/${id}/delete`, { method: "POST" });
+      setSelected(null);
       await load();
     } catch {
       // ídem
@@ -283,6 +297,22 @@ export function AgendaPanel({ active }: { active: boolean }) {
               </div>
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Docente / responsable (opcional)</span>
+              <Input value={teacher} onChange={(e) => setTeacher(e.target.value)} placeholder="Ej. Prof. García" />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Descripción (opcional)</span>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Aula, link, lo que sea"
+                rows={2}
+                className="rounded-lg border border-border bg-panel px-3 py-2 focus:border-accent/60"
+              />
+            </div>
+
             <Button onClick={create} disabled={saving} size="sm" className="self-start">
               {saving ? "Agregando..." : "Agregar"}
             </Button>
@@ -361,8 +391,8 @@ export function AgendaPanel({ active }: { active: boolean }) {
                     return (
                       <button
                         key={b.id}
-                        onClick={() => remove(b.id)}
-                        title={`${b.label} · ${hhmm(b.start_time)}-${hhmm(b.end_time)} · click para borrar`}
+                        onClick={() => setSelected(b)}
+                        title={`${b.label} · ${hhmm(b.start_time)}-${hhmm(b.end_time)}`}
                         className="absolute left-0.5 right-0.5 rounded-md border-l-[3px] px-1.5 py-1 text-left overflow-hidden shadow-sm transition-all hover:brightness-125 hover:shadow-md"
                         style={{ top, height, background: `${color}26`, borderColor: color }}
                       >
@@ -386,9 +416,10 @@ export function AgendaPanel({ active }: { active: boolean }) {
             <div className="text-[11px] uppercase tracking-wide text-muted mb-1.5 px-1">Fechas puntuales</div>
             <div className="flex flex-col gap-2.5">
               {upcoming.map((b) => (
-                <div
+                <button
                   key={b.id}
-                  className="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3"
+                  onClick={() => setSelected(b)}
+                  className="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 text-left transition-colors hover:border-panel3"
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
@@ -400,15 +431,60 @@ export function AgendaPanel({ active }: { active: boolean }) {
                       {dateLabel(b.date!)} · {hhmm(b.start_time)}-{hhmm(b.end_time)}
                     </div>
                   </div>
-                  <Button variant="destructive" size="sm" onClick={() => remove(b.id)} className="shrink-0">
-                    Borrar
-                  </Button>
-                </div>
+                </button>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {selected && <BlockDetail block={selected} onClose={() => setSelected(null)} onDelete={() => remove(selected.id)} />}
+    </div>
+  );
+}
+
+function BlockDetail({ block, onClose, onDelete }: { block: AgendaBlock; onClose: () => void; onDelete: () => void }) {
+  const when = block.day_of_week !== null ? `Cada ${DOW_FULL[block.day_of_week]}` : dateLabel(block.date!);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <Card className="w-full max-w-sm p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-base font-semibold text-white">{block.label}</h3>
+          <button onClick={onClose} className="text-muted hover:text-gray-200 shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="text-sm text-gray-300">
+          {when} · {hhmm(block.start_time)}-{hhmm(block.end_time)}
+        </div>
+
+        {block.teacher && (
+          <div className="flex items-start gap-2 text-sm text-gray-300">
+            <User size={15} className="text-muted mt-0.5 shrink-0" />
+            <span>{block.teacher}</span>
+          </div>
+        )}
+
+        {block.description && (
+          <div className="flex items-start gap-2 text-sm text-gray-300">
+            <FileText size={15} className="text-muted mt-0.5 shrink-0" />
+            <span className="whitespace-pre-wrap">{block.description}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between gap-2 mt-1">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cerrar
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onDelete} className="gap-1.5">
+            <Trash2 size={13} /> Borrar
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

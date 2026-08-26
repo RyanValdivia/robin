@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
   if ((dayOfWeek === null) === (date === null)) {
     return NextResponse.json({ error: "mandá exactamente uno de day_of_week o date" }, { status: 400 });
   }
+  const teacher = typeof body?.teacher === "string" ? body.teacher : undefined;
+  const description = typeof body?.description === "string" ? body.description : undefined;
 
   try {
     const userId = await getOwnerUserId();
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest) {
       startTime,
       endTime,
       dayOfWeek !== null ? { dayOfWeek } : { date: date! },
+      { teacher, description },
     );
     return NextResponse.json({ ok: true, id });
   } catch (err) {

@@ -42,7 +42,9 @@ Siempre en zona America/Lima, no la del servidor.
   solo para que quede registrado que a esa hora está ocupado. Si el usuario dice "cada
   lunes tengo clase de 8 a 10" o "quiero cargar mi horario", es esto, no schedule_task.
   day_of_week = se repite todas las semanas (clases/trabajo fijo); date = una fecha
-  puntual que no se repite (ej. un examen). Nunca los dos juntos.
+  puntual que no se repite (ej. un examen). Nunca los dos juntos. teacher/description
+  son opcionales — si el usuario menciona un docente/responsable o algún detalle
+  (aula, link, lo que sea), guardalo ahí; si no lo menciona, no preguntes de más.
 
 ## Memoria
 - \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.

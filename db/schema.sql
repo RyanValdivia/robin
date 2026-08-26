@@ -156,10 +156,18 @@ CREATE TABLE IF NOT EXISTS agenda_blocks (
   date         DATE,
   start_time   TIME NOT NULL,
   end_time     TIME NOT NULL,
+  teacher      TEXT,  -- docente/responsable, opcional
+  description  TEXT,  -- notas libres, opcional
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK ((day_of_week IS NOT NULL) <> (date IS NOT NULL)),
   CHECK (day_of_week IS NULL OR (day_of_week BETWEEN 0 AND 6)),
   CHECK (start_time < end_time)
 );
+
+-- CREATE TABLE IF NOT EXISTS no agrega columnas a una tabla que ya existe —
+-- necesario para cuando agenda_blocks ya estaba creada (teacher/description
+-- se sumaron después del lanzamiento inicial).
+ALTER TABLE agenda_blocks ADD COLUMN IF NOT EXISTS teacher TEXT;
+ALTER TABLE agenda_blocks ADD COLUMN IF NOT EXISTS description TEXT;
 
 CREATE INDEX IF NOT EXISTS agenda_blocks_user_idx ON agenda_blocks (user_id);

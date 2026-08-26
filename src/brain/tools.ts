@@ -184,8 +184,10 @@ const addAgendaBlockTool = tool(
     end_time: z.string().describe("Hora de fin HH:MM 24h, ej. '10:00'"),
     day_of_week: z.number().int().min(0).max(6).optional().describe("0=domingo..6=sábado — recurrente semanal"),
     date: z.string().optional().describe("Fecha exacta ISO 'YYYY-MM-DD' — puntual, no se repite"),
+    teacher: z.string().optional().describe("Docente/responsable, si lo menciona (opcional)"),
+    description: z.string().optional().describe("Notas libres, ej. aula/link/lo que sea (opcional)"),
   },
-  async ({ label, start_time, end_time, day_of_week, date }) => {
+  async ({ label, start_time, end_time, day_of_week, date, teacher, description }) => {
     const userId = await getOwnerUserId();
     if (!userId) return { content: [{ type: "text", text: "No hay dueño configurado." }] };
     if ((day_of_week === undefined) === (date === undefined)) {
@@ -198,6 +200,7 @@ const addAgendaBlockTool = tool(
         start_time,
         end_time,
         day_of_week !== undefined ? { dayOfWeek: day_of_week } : { date: date! },
+        { teacher, description },
       );
       return { content: [{ type: "text", text: `Agregado (id ${id}).` }] };
     } catch (err) {
@@ -218,7 +221,8 @@ const listAgendaTool = tool(
     const text = rows
       .map((b) => {
         const when = b.day_of_week !== null ? `cada ${DOW_NAMES[b.day_of_week]}` : b.date!;
-        return `[${b.id}] ${when} ${b.start_time.slice(0, 5)}-${b.end_time.slice(0, 5)} — ${b.label}`;
+        const extra = [b.teacher, b.description].filter(Boolean).join(" · ");
+        return `[${b.id}] ${when} ${b.start_time.slice(0, 5)}-${b.end_time.slice(0, 5)} — ${b.label}${extra ? ` (${extra})` : ""}`;
       })
       .join("\n");
     return { content: [{ type: "text", text }] };
