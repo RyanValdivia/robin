@@ -10,6 +10,7 @@ import { REDIS_URL } from "../config.ts";
 import { resolveOwnerChannel } from "./auth.ts";
 import { listPendingReminders, getOutboundSender } from "./scheduler.ts";
 import { createBrainSession } from "./session.ts";
+import { getRecentUserMessages } from "./conversationLog.ts";
 
 type SummaryKind = "daily" | "weekly";
 
@@ -34,6 +35,15 @@ async function generateSummary(kind: SummaryKind): Promise<string> {
           .join("\n")
       : "Sin recordatorios pendientes.";
 
+  // Memoria pasiva (gap #4): antes remember() era 100% opt-in en caliente — si
+  // Claude no lo llamaba en el momento de la charla, el hecho se perdía. Acá
+  // (batched, no por turno — no cuesta cuota extra de Claude por mensaje)
+  // le pasamos lo que el usuario tipeó desde la última corrida para que
+  // proponga guardar lo que note que valga la pena.
+  const sinceHours = kind === "daily" ? 24 : 24 * 7;
+  const recent = owner ? await getRecentUserMessages(owner.userId, sinceHours) : [];
+  const recentText = recent.length > 0 ? recent.map((t) => `- ${t}`).join("\n") : "(sin mensajes nuevos)";
+
   const periodo = kind === "daily" ? "diario" : "semanal";
   const prompt = `Generá un resumen ${periodo} breve para el usuario, en español, tono natural de
 mensaje de buenos días — NO un reporte formal ni una lista burocrática.
@@ -44,7 +54,15 @@ Incluí, solo si hay algo que realmente valga la pena (no inventes relleno si no
 2. Sus recordatorios pendientes:
 ${remindersText}
 
-3-6 líneas, texto plano.`;
+Además (esto NO va en el resumen que le mandás, es una tarea aparte): estos son los mensajes
+que el usuario escribió desde la última corrida —
+${recentText}
+— si ves ahí un hecho duradero (preferencia, dato personal, decisión, algo que dijo "acordate
+de esto") que no esté ya guardado en la memoria (podés chequear con search_memory), llamá
+remember() para guardarlo vos mismo, sin preguntar. Si no hay nada así, no llames remember().
+
+IMPORTANTE: tu respuesta final tiene que ser SOLO el resumen (3-6 líneas, texto plano) — no
+menciones que guardaste (o no) nada en la memoria, eso es interno, no le importa al usuario acá.`;
 
   const session = createBrainSession();
   try {

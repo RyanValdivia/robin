@@ -3,18 +3,22 @@
 // índice semántico (pgvector) nunca queda desincronizado de los archivos.
 import { z } from "zod";
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
-import { remember, searchMemory } from "./memory.ts";
+import { remember, searchMemory, forget } from "./memory.ts";
 import { getOwnerUserId, resolveOwnerChannel } from "./auth.ts";
 import { scheduleReminder, scheduleRecurringReminder, cancelReminder, listPendingReminders } from "./scheduler.ts";
 
 const searchMemoryTool = tool(
   "search_memory",
   "Busca en la memoria de largo plazo (vault de notas) por texto exacto y por " +
-    "significado. Devuelve rutas relativas a memory/ con un fragmento — si necesitás " +
-    "el contenido completo de una nota, leela después con Read.",
-  { query: z.string().describe("Qué buscar, en lenguaje natural") },
-  async ({ query }) => {
-    const results = await searchMemory(query, 5);
+    "significado, rankeadas por relevancia. Devuelve rutas relativas a memory/ con un " +
+    "fragmento — si necesitás el contenido completo de una nota, leela después con Read. " +
+    "Si los primeros 5 no alcanzan, repetí la consulta con offset=5 para los siguientes.",
+  {
+    query: z.string().describe("Qué buscar, en lenguaje natural"),
+    offset: z.number().int().min(0).optional().describe("Cuántos resultados saltar (paginación) — 0 por defecto"),
+  },
+  async ({ query, offset }) => {
+    const results = await searchMemory(query, 5, offset ?? 0);
     if (results.length === 0) {
       return { content: [{ type: "text", text: "Sin resultados en la memoria." }] };
     }
@@ -42,6 +46,23 @@ const rememberTool = tool(
   async ({ relative_path, type, name, description, content }) => {
     await remember(relative_path, { type, name, description }, content);
     return { content: [{ type: "text", text: `Guardado en memory/${relative_path}` }] };
+  },
+);
+
+const forgetTool = tool(
+  "forget",
+  "Borra una nota de la memoria de largo plazo — la saca del vault, del índice semántico " +
+    "y de MEMORY.md. Usala cuando el usuario pida explícitamente olvidar/borrar algo que " +
+    "guardaste antes; no la uses para 'actualizar' una nota (para eso, remember() con el " +
+    "mismo relative_path pisa el contenido).",
+  { relative_path: z.string().describe("Ruta relativa dentro de memory/ de la nota a borrar") },
+  async ({ relative_path }) => {
+    const ok = await forget(relative_path);
+    return {
+      content: [
+        { type: "text", text: ok ? `Borrado memory/${relative_path}.` : `No encontré memory/${relative_path}.` },
+      ],
+    };
   },
 );
 
@@ -129,6 +150,7 @@ export const memoryMcpServer = createSdkMcpServer({
   tools: [
     searchMemoryTool,
     rememberTool,
+    forgetTool,
     scheduleTaskTool,
     scheduleRecurringReminderTool,
     listRemindersTool,

@@ -8,6 +8,7 @@ import { searchMemory } from "./memory.ts";
 import { chatComplete, cheapLlmAvailable } from "./cheapLLM.ts";
 import { scheduleReminder } from "./scheduler.ts";
 import { logMessage } from "./usage.ts";
+import { logTurn } from "./conversationLog.ts";
 
 export type Category = "direct" | "knowledge" | "agent";
 
@@ -203,15 +204,19 @@ export async function routeMessage(
   const category = await classify(text);
   logMessage(category, ctx?.channel); // para el dashboard de uso (Web UI) - no bloquea la respuesta
 
+  let reply: string;
   if (category === "direct") {
-    const reply = await handleDirect(text, ctx);
-    if (reply !== null) return reply;
+    reply = (await handleDirect(text, ctx)) ?? (await sendToAgent());
+  } else if (category === "knowledge") {
+    reply = (await handleKnowledge(text)) ?? (await sendToAgent());
+  } else {
+    reply = await sendToAgent();
   }
 
-  if (category === "knowledge") {
-    const reply = await handleKnowledge(text);
-    if (reply !== null) return reply;
-  }
+  // Persistencia de conversaciones/mensajes (gap #1, ver conversationLog.ts) -
+  // no bloquea la respuesta; sin ctx (ej. CLI local) no hay a qué user/canal
+  // atribuir el turno, se omite.
+  if (ctx) logTurn(ctx, category, text, reply);
 
-  return sendToAgent();
+  return reply;
 }

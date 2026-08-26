@@ -5,7 +5,7 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { ROOT } from "../config.ts";
 import { memoryMcpServer } from "./tools.ts";
 import { buildMcpServers } from "./mcp.ts";
-import { bashGuardHook } from "./hooks.ts";
+import { bashGuardHook, toolAuditHook, compactionLogHook } from "./hooks.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
 
 function brainOptions(): Options {
@@ -17,7 +17,12 @@ function brainOptions(): Options {
     tools: ["Read", "Grep", "Glob", "Bash"],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
-    hooks: { PreToolUse: [{ matcher: "Bash", hooks: [bashGuardHook] }] },
+    hooks: {
+      PreToolUse: [{ matcher: "Bash", hooks: [bashGuardHook] }],
+      PostToolUse: [{ hooks: [toolAuditHook] }],
+      PreCompact: [{ hooks: [compactionLogHook] }],
+      PostCompact: [{ hooks: [compactionLogHook] }],
+    },
     cwd: ROOT,
   };
 }

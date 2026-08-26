@@ -509,6 +509,107 @@ estos atacar primero. El más importante para "memoria 100% funcional" es el
 #1 (conversaciones no persisten) — es el único que contradice una decisión
 de diseño ya tomada y documentada, no una feature nueva.
 
+## Gap #1 resuelto: conversaciones/mensajes ahora persisten
+
+Usuario priorizó atacar el #1 primero (de los 7 del análisis de arriba),
+resto queda para después.
+
+- `src/brain/conversationLog.ts` nuevo: `logTurn(ctx, category, userText,
+  assistantText)`, fire-and-forget (mismo criterio que `usage.ts` — un fallo
+  acá nunca rompe una respuesta real). `getOrCreateConversation()` interno
+  hace upsert (`ON CONFLICT ... DO UPDATE SET last_active_at = now()`) sobre
+  `(user_id, channel, external_conversation_id)` — idempotente entre
+  restarts, no duplica fila por proceso.
+- `db/schema.sql`: índice único
+  `conversations_user_channel_external_idx` nuevo — necesario para que el
+  `ON CONFLICT` de arriba funcione. Requiere migración en el VPS
+  (`CREATE UNIQUE INDEX`, no rompe filas existentes — la tabla estaba vacía,
+  cero INSERTs hasta ahora).
+- `router.ts`: `routeMessage()` llama `logTurn(ctx, category, text, reply)`
+  al final, para las tres ramas (direct/knowledge/agent) — un solo punto de
+  enganche porque los 4 call sites (CLI, Telegram, Web mensaje, Web voz) ya
+  pasan por acá. Sin `ctx` (hoy: CLI local, no tiene noción de owner/canal)
+  se omite el log — no hay user/canal a quién atribuirlo.
+- `content` de `messages` guarda `{text, category}` en el mensaje de usuario
+  y `{text}` en el de assistant — suficiente para reconstruir el historial
+  legible; no guarda tool calls intermedios de AGENT (eso seguiría siendo
+  el gap #2, `tool_audit_log`, todavía sin implementar).
+- **No implementado en esta pasada:** nada lee estas tablas todavía — no hay
+  endpoint/tool que le muestre a Claude o a la Web UI el historial
+  persistido. Esto solo resuelve que el dato exista y sobreviva un restart;
+  "recordar la charla de ayer" en una sesión nueva necesitaría además cargar
+  estos mensajes al abrir sesión (`session.ts`) o una tool de consulta — no
+  pedido todavía, queda igual que el gap #4 (memoria pasiva).
+- **Typecheck limpio** (`tsc --noEmit` en `src/` y `web/`) — no verificado en
+  vivo todavía, falta migración de schema + rebuild/redeploy en el VPS.
+
+## Gaps #2/#3/#5/#6/#7 resueltos, #4 resuelto en versión batched
+
+Continuación de la pasada anterior (#1). Mismo criterio para todos: no
+verificado en vivo, falta migración de schema (índice único de `conversations`
+del punto anterior) + rebuild/redeploy en el VPS. Typecheck limpio (`src/` y
+`web/`) en cada uno.
+
+- **#2 (`tool_audit_log` sin usar):** `hooks.ts` — `toolAuditHook` nuevo,
+  `PostToolUse` sin matcher (corre para cualquier tool: Bash/Read/Grep/Glob/
+  MCP), fire-and-forget mismo criterio que `usage.ts`. No liga a una
+  conversación puntual (`conversation_id` queda NULL) — `BrainSession` no
+  tiene noción de `ctx` al crearse; ligarlo bien requeriría pasarle `ctx` a
+  `createBrainSession()`, que hoy se usa también sin `ctx` (proactive.ts,
+  sesiones de un solo uso) — no atacado, alcance quedó en "que exista el
+  registro", no en asociarlo a la charla exacta.
+- **#3 (no había `forget`):** `memory.ts` — `forget(relativePath)`, borra
+  archivo + fila de `memory_embeddings` + `memory_links` salientes + bullet
+  de `MEMORY.md`. NO limpia links ENTRANTES de otras notas hacia la borrada
+  (quedan colgantes — ya válido en el vault, ver [[wikilinks]] de la pasada
+  anterior). Tool nueva para AGENT: `forget` en `tools.ts`, mismo patrón que
+  `remember`/`search_memory`.
+- **#5 (`search_memory` sin reranking):** `memory.ts` — antes mezclaba
+  exact→semantic por orden de aparición; ahora exact tiene score sintético
+  (1 + bonus por cantidad de términos matcheados) y semantic su similitud
+  coseno (0..1), se combinan en un solo `Map` por path (exact gana si empata)
+  y se ordena por score descendente. Los vecinos por `[[wikilink]]` (V1.1)
+  quedan siempre al final, sin score de texto — la relación explícita ya es
+  la señal, no compiten por relevancia con los demás.
+  De paso, `searchMemory(query, k, offset)` — parámetro `offset` nuevo para
+  paginar (pedía `k` fijo sin paginación); `search_memory` (tool MCP) expone
+  `offset` opcional, con la descripción indicándole a Claude que repita con
+  `offset=5` si los primeros 5 no alcanzan.
+- **#6 (categorías hardcodeadas):** `CATEGORY_LABELS` (objeto en código) ->
+  `memory/.categories.json` (nuevo, sembrado con las mismas 4 labels de
+  antes: user/projects/infrastructure/reference — cero cambio de
+  comportamiento hoy). Una categoría nueva ya no necesita tocar código: si no
+  está en el JSON, `labelForCategory()` cae a capitalizar el nombre de la
+  carpeta (ej. `salud/` -> "Salud" solo). JSON roto a mano degrada al mismo
+  fallback, no rompe `remember()`/`forget()`.
+- **#7 (sesión larga sin gestión de contexto):** investigado, no era gap
+  real — el Agent SDK YA compacta el contexto solo al acercarse al límite
+  (`autoCompactEnabled` + hooks `PreCompact`/`PostCompact` +
+  `SDKCompactBoundaryMessage`, todo tipos de primera clase del SDK). El
+  problema real era que Robin nunca lo logueaba, entonces desde afuera
+  parecía que no había estrategia. Se agregó `compactionLogHook` (mismo
+  archivo `hooks.ts`) enganchado a `PreCompact`/`PostCompact` — solo
+  observabilidad (`console.log`), no se reemplaza el mecanismo del SDK (sería
+  duplicar/pisar algo que ya funciona). Pendiente de verificar en vivo: una
+  sesión larga real en el VPS y confirmar que el log aparece cuando toca.
+- **#4 (memoria 100% opt-in, nunca pasiva) — versión batched, no por
+  turno:** en vez de revisar cada mensaje en caliente (costaría cuota de
+  Claude por turno), se enganchó al resumen proactivo diario/semanal que ya
+  existía (`proactive.ts`) — que de por sí ya llama a Claude una vez por
+  corrida, sin costo nuevo de infraestructura. `getRecentUserMessages()`
+  nuevo en `conversationLog.ts` trae los mensajes de usuario desde la última
+  corrida (24h para el diario, 7 días para el semanal) usando la
+  persistencia del gap #1 de la pasada anterior — sin esa, este gap no se
+  podía cerrar así (dependía de #1). El prompt del resumen le agrega esos
+  mensajes como contexto aparte y le pide a Claude llamar `remember()` él
+  mismo si nota un hecho duradero no guardado todavía — sin preguntar, pero
+  con instrucción explícita de que la respuesta final (lo que se manda al
+  usuario) sea SOLO el resumen, sin mencionar qué guardó o no (evita que el
+  aside de "guardé X" se filtre al mensaje real).
+  **Limitación conocida:** si el usuario menciona un dato importante y quiere
+  que quede guardado YA (no en 24h), sigue sin haber vía — la propuesta es
+  automática pero best-effort, en la próxima corrida programada.
+
 ## Plan completo
 
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`

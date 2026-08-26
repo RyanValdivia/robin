@@ -40,6 +40,20 @@ function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
 }
 
+/** Extrae los nombres de [[wikilinks]] del cuerpo de una nota (sin duplicados). */
+function parseWikilinks(body: string): string[] {
+  const names = new Set<string>();
+  for (const m of body.matchAll(/\[\[([^\]|#]+)/g)) names.add(m[1].trim());
+  return [...names];
+}
+
+/** name (frontmatter) -> document_path, para resolver [[wikilinks]] a rutas reales. */
+function nameToPathMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const note of listNotes()) if (note.name) map.set(note.name, note.path);
+  return map;
+}
+
 /** Búsqueda exacta: substring case-insensitive sobre el contenido de cada nota. */
 function grepSearch(query: string, limit = 5): Array<{ document_path: string; snippet: string }> {
   const terms = query.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -74,30 +88,70 @@ async function vectorSearch(
   return rows;
 }
 
-export type SearchResult = { document_path: string; snippet: string; source: "exact" | "semantic"; score?: number };
+export type SearchResult = {
+  document_path: string;
+  snippet: string;
+  source: "exact" | "semantic" | "linked";
+  score?: number;
+};
 
-/** search_memory() — la interfaz estable. V1: exact (grep) + semantic (pgvector), sin reranking todavía (V4). */
-export async function searchMemory(query: string, k = 5): Promise<SearchResult[]> {
-  const [exact, semantic] = await Promise.all([
-    Promise.resolve(grepSearch(query, k)),
-    vectorSearch(query, k).catch(() => []), // si Postgres no está disponible, degrada a solo grep
-  ]);
-  const seen = new Set<string>();
-  const merged: SearchResult[] = [];
-  for (const r of exact) {
-    if (seen.has(r.document_path)) continue;
-    seen.add(r.document_path);
-    merged.push({ ...r, source: "exact" });
-  }
-  for (const r of semantic) {
-    if (seen.has(r.document_path)) continue;
-    seen.add(r.document_path);
-    merged.push({ ...r, source: "semantic" });
-  }
-  return merged.slice(0, k);
+// Score sintético para un hit exacto: 1 (máxima confianza — matcheó texto
+// literal) más un pequeño bonus por cantidad de términos matcheados, para que
+// entre dos exactos desempate el que cubre más de la query. Nunca supera a
+// otro exacto por mucho ni se confunde con el 0..1 de similitud coseno.
+function exactScore(snippet: string, terms: string[]): number {
+  const lower = snippet.toLowerCase();
+  const hits = terms.filter((t) => lower.includes(t)).length;
+  return 1 + hits * 0.01;
 }
 
-/** Reindexa una nota existente: recalcula embedding y upsertea en memory_embeddings. */
+/**
+ * search_memory() — la interfaz estable. V1: exact (grep) + semantic (pgvector),
+ * V1.1: + vecinos por [[wikilink]], V1.2: + reranking por score combinado (antes
+ * mezclaba por orden de aparición, ver gap #5 del análisis de memoria).
+ * `offset` para paginar sin repetir resultados ya vistos.
+ */
+export async function searchMemory(query: string, k = 5, offset = 0): Promise<SearchResult[]> {
+  const fetchN = offset + k; // pedimos lo suficiente para poder recortar el offset después
+  const [exact, semantic] = await Promise.all([
+    Promise.resolve(grepSearch(query, fetchN)),
+    vectorSearch(query, fetchN).catch(() => []), // si Postgres no está disponible, degrada a solo grep
+  ]);
+
+  const terms = query.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+  const byPath = new Map<string, SearchResult>();
+  for (const r of exact) {
+    byPath.set(r.document_path, { ...r, source: "exact", score: exactScore(r.snippet, terms) });
+  }
+  for (const r of semantic) {
+    if (byPath.has(r.document_path)) continue; // un exacto ya vale más que semántico sobre la misma nota
+    byPath.set(r.document_path, { ...r, source: "semantic" });
+  }
+
+  // Reranking real: score combinado descendente (antes: orden de aparición exact->semantic).
+  const ranked = [...byPath.values()].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const seen = new Set(ranked.map((r) => r.document_path));
+
+  // Expansión por grafo: 1 hop de [[wikilinks]] salientes de los hits directos,
+  // al final (sin score de relevancia de texto — la relación explícita ya es la señal).
+  const linked: SearchResult[] = [];
+  if (ranked.length > 0 && ranked.length < fetchN) {
+    for (const hit of ranked) {
+      if (ranked.length + linked.length >= fetchN) break;
+      const neighbors = await linkedNotes(hit.document_path).catch(() => []);
+      for (const path of neighbors) {
+        if (ranked.length + linked.length >= fetchN) break;
+        if (seen.has(path)) continue;
+        seen.add(path);
+        linked.push({ document_path: path, snippet: stripFrontmatter(readNoteFile(path)).slice(0, 200), source: "linked" });
+      }
+    }
+  }
+
+  return [...ranked, ...linked].slice(offset, offset + k);
+}
+
+/** Reindexa una nota existente: recalcula embedding + [[wikilinks]] salientes. */
 export async function indexNote(relativePath: string): Promise<void> {
   const content = stripFrontmatter(readNoteFile(relativePath));
   const vec = await embed(content || relativePath);
@@ -109,29 +163,66 @@ export async function indexNote(relativePath: string): Promise<void> {
        SET chunk = excluded.chunk, embedding = excluded.embedding, updated_at = now()`,
     [relativePath, content, literal],
   );
+
+  const links = parseWikilinks(content);
+  await pool.query(`DELETE FROM memory_links WHERE from_path = $1`, [relativePath]);
+  for (const toName of links) {
+    await pool.query(
+      `INSERT INTO memory_links (from_path, to_name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [relativePath, toName],
+    );
+  }
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  user: "User",
-  projects: "Projects",
-  infrastructure: "Infrastructure",
-  reference: "Reference",
-};
+/** Notas vecinas de `fromPath` por [[wikilink]] saliente (1 hop), resueltas a document_path. */
+async function linkedNotes(fromPath: string): Promise<string[]> {
+  const { rows } = await pool.query<{ to_name: string }>(
+    `SELECT to_name FROM memory_links WHERE from_path = $1`,
+    [fromPath],
+  );
+  if (rows.length === 0) return [];
+  const nameToPath = nameToPathMap();
+  return rows.map((r) => nameToPath.get(r.to_name)).filter((p): p is string => !!p && p !== fromPath);
+}
+
+// Etiquetas de sección de MEMORY.md por categoría (= primer segmento del path,
+// ej. "user/x.md" -> "user"). Editable a mano en memory/.categories.json — una
+// categoría nueva (ej. "salud") NO necesita tocar código, cae al fallback de
+// capitalizar el nombre de la carpeta si no está en el archivo (gap #6).
+const CATEGORY_LABELS_FILE = path.join(MEMORY_DIR, ".categories.json");
+
+function loadCategoryLabels(): Record<string, string> {
+  if (!fs.existsSync(CATEGORY_LABELS_FILE)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(CATEGORY_LABELS_FILE, "utf-8"));
+  } catch {
+    return {}; // JSON roto a mano -> degrada al fallback, no rompe remember()/forget()
+  }
+}
+
+function labelForCategory(category: string): string {
+  const overrides = loadCategoryLabels();
+  return overrides[category] ?? category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+/** Saca de MEMORY.md cualquier bullet existente para `relativePath` (updates y forget). */
+function removeIndexBullet(text: string, relativePath: string): string {
+  return text
+    .split("\n")
+    .filter((l) => !l.startsWith(`- ${relativePath} `) && !l.startsWith(`- ${relativePath}—`))
+    .join("\n");
+}
 
 function updateMemoryIndex(relativePath: string, description: string): void {
   const category = relativePath.split("/")[0];
-  const label = CATEGORY_LABELS[category] ?? category;
+  const label = labelForCategory(category);
   let text = fs.existsSync(MEMORY_INDEX)
     ? fs.readFileSync(MEMORY_INDEX, "utf-8").replace(/\r\n/g, "\n")
     : "# Memory Index\n";
   const bullet = `- ${relativePath} — ${description}`;
   const headerRe = new RegExp(`^## ${label}\\s*$`, "m");
 
-  // saco cualquier bullet previo para este mismo path (updates)
-  text = text
-    .split("\n")
-    .filter((l) => !l.startsWith(`- ${relativePath} `) && !l.startsWith(`- ${relativePath}—`))
-    .join("\n");
+  text = removeIndexBullet(text, relativePath); // saco cualquier bullet previo para este mismo path (updates)
 
   if (headerRe.test(text)) {
     text = text.replace(headerRe, (m) => `${m}\n${bullet}`);
@@ -150,6 +241,28 @@ export async function remember(relativePath: string, meta: NoteMeta, body: strin
   fs.writeFileSync(full, frontmatter + body.trim() + "\n");
   updateMemoryIndex(relativePath, meta.description);
   await indexNote(relativePath);
+}
+
+/**
+ * forget() — contraparte de remember() (gap #3): borra la nota del vault +
+ * su fila de memory_embeddings + sus [[wikilinks]] salientes + su bullet en
+ * MEMORY.md. false si el path no es una nota real (mismo chequeo anti path-
+ * traversal que readNote()). No limpia links ENTRANTES de otras notas hacia
+ * esta (quedan colgantes — un [[link]] colgante ya es válido en el vault).
+ */
+export async function forget(relativePath: string): Promise<boolean> {
+  if (!relativePath.endsWith(".md")) relativePath += ".md";
+  if (!listNoteFiles().includes(relativePath)) return false;
+
+  fs.unlinkSync(path.join(MEMORY_DIR, relativePath));
+  await pool.query(`DELETE FROM memory_embeddings WHERE document_path = $1`, [relativePath]);
+  await pool.query(`DELETE FROM memory_links WHERE from_path = $1`, [relativePath]);
+
+  if (fs.existsSync(MEMORY_INDEX)) {
+    const text = removeIndexBullet(fs.readFileSync(MEMORY_INDEX, "utf-8").replace(/\r\n/g, "\n"), relativePath);
+    fs.writeFileSync(MEMORY_INDEX, text.trimEnd() + "\n");
+  }
+  return true;
 }
 
 /** Reindexa todo el vault desde cero (bootstrap / recuperación). */

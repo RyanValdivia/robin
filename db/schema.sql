@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS conversations (
   last_active_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Una conversación por (user, channel, external_conversation_id) — upsert
+-- idempotente en conversationLog.ts, sobrevive restarts sin duplicar filas.
+CREATE UNIQUE INDEX IF NOT EXISTS conversations_user_channel_external_idx
+  ON conversations (user_id, channel, external_conversation_id);
+
 CREATE TABLE IF NOT EXISTS messages (
   id               SERIAL PRIMARY KEY,
   conversation_id  INTEGER NOT NULL REFERENCES conversations(id),
@@ -92,3 +97,15 @@ CREATE INDEX IF NOT EXISTS memory_embeddings_fts_idx
 -- lists/probes más adelante si el vault crece mucho).
 CREATE INDEX IF NOT EXISTS memory_embeddings_vector_idx
   ON memory_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- Grafo de [[wikilinks]] entre notas del vault. Tampoco es fuente de verdad —
+-- se reconstruye en cada indexNote() a partir del contenido de la nota.
+-- to_name es el `name:` del frontmatter destino (puede no existir todavía:
+-- un [[link]] colgante es válido, ver MEMORY.md).
+CREATE TABLE IF NOT EXISTS memory_links (
+  from_path  TEXT NOT NULL,
+  to_name    TEXT NOT NULL,
+  PRIMARY KEY (from_path, to_name)
+);
+
+CREATE INDEX IF NOT EXISTS memory_links_from_idx ON memory_links (from_path);
