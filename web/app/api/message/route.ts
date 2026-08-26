@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOwnerUserId } from "@brain/auth.ts";
 import { routeMessage, type RouteContext } from "@brain/router.ts";
+import { getConversationHistory } from "@brain/conversationLog.ts";
 import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
+
+// Repobla las burbujas del Chat al cargar la página — ver getConversationHistory().
+export async function GET() {
+  try {
+    const userId = await getOwnerUserId();
+    const ctx: RouteContext | undefined = userId ? { userId, channel: "web", externalId: "owner" } : undefined;
+    if (!ctx) return NextResponse.json({ messages: [] });
+    return NextResponse.json({ messages: await getConversationHistory(ctx) });
+  } catch (err) {
+    console.error("[web] error leyendo historial del chat:", err);
+    return NextResponse.json({ error: "no pude leer el historial" }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);

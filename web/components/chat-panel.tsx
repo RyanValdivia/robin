@@ -10,7 +10,11 @@ type Role = "user" | "bot" | "typing" | "error";
 type Message = { role: Role; text: string; time?: string; audio?: string | null };
 
 function formatTime(): string {
-  return new Date().toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
+  return formatTimeFrom(new Date());
+}
+
+function formatTimeFrom(d: Date | string): string {
+  return new Date(d).toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
 }
 
 function playAudio(base64: string) {
@@ -51,6 +55,29 @@ export function ChatPanel() {
     fetch("/api/voice-status")
       .then((r) => r.json())
       .then(setVoice)
+      .catch(() => {});
+  }, []);
+
+  // Repobla las burbujas con lo persistido en Postgres (messages, ver
+  // conversationLog.ts) — antes esto vivía solo en estado de React: recargar
+  // la página vaciaba la vista aunque la sesión de Claude siguiera con toda
+  // la memoria (ver session.ts). Si no hay historial (primera vez), se queda
+  // el saludo default de arriba.
+  useEffect(() => {
+    fetch("/api/message")
+      .then((r) => r.json())
+      .then((data) => {
+        const rows: Array<{ role: "user" | "assistant"; text: string; created_at: string }> = data.messages || [];
+        if (rows.length === 0) return;
+        setMessages(
+          rows.map((r) => ({
+            role: r.role === "user" ? "user" : "bot",
+            text: r.text,
+            time: formatTimeFrom(r.created_at),
+          })),
+        );
+        scrollLog();
+      })
       .catch(() => {});
   }, []);
 

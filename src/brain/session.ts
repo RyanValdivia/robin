@@ -49,21 +49,23 @@ export type BrainSession = {
   close: () => void;
 };
 
-/**
- * `ctx` (opcional): liga esta sesión a una conversación real (gap #2 de la
- * segunda tanda — antes tool_audit_log siempre quedaba con conversation_id
- * NULL). Se resuelve UNA sola vez acá (no por tool call) y se pasa como
- * promesa al hook de auditoría. Sin ctx (CLI, sesiones de un solo uso de
- * proactive.ts) sigue quedando NULL — no hay conversación real que ligar.
- */
-export function createBrainSession(ctx?: RouteContext): BrainSession {
-  const conversationIdPromise: Promise<number | null> = ctx
-    ? getOrCreateConversation(ctx).catch((err) => {
-        console.error("[session] no pude resolver conversation_id:", err);
-        return null;
-      })
-    : Promise.resolve(null);
+// Tokens totales del último turno (input + cache_creation + cache_read — la
+// foto real de "cuánto contexto se mandó", no solo lo nuevo) por encima de
+// los cuales se reinicia la sesión ANTES del próximo mensaje. 60k es bien
+// conservador frente a un context window de 200k+ — la idea es cortar el
+// gasto (cada turno resendea TODO el historial) antes de que se vuelva
+// notorio, no evitar que reviente. El historial visible en el Chat no se
+// pierde (Postgres vía conversationLog.ts, no el estado en RAM de esto acá)
+// — Claude sí "olvida" lo de antes del reset, mismo trade-off que pedir un
+// /clear a mano, solo que automático.
+const CONTEXT_RESET_TOKENS = 60_000;
 
+/**
+ * Un solo query() del Agent SDK con su loop de prompts — la pieza que se
+ * puede tirar y recrear para "reiniciar" una sesión sin que el caller (send/
+ * close de BrainSession) tenga que enterarse.
+ */
+function createInner(conversationIdPromise: Promise<number | null>) {
   const queue: any[] = [];
   // Objetos wrapper (no `let` sueltos) para esquivar el narrowing de TS a
   // través de closures — con un `let` bare, TS termina infiriendo `never` acá.
@@ -71,6 +73,7 @@ export function createBrainSession(ctx?: RouteContext): BrainSession {
   const pending: { resolve: ((text: string) => void) | null } = { resolve: null };
   const state: { closed: boolean } = { closed: false };
   let buffer = "";
+  let lastContextTokens = 0;
 
   async function* promptGenerator() {
     while (!state.closed) {
@@ -93,6 +96,12 @@ export function createBrainSession(ctx?: RouteContext): BrainSession {
       } else if (msg.type === "result") {
         const text = msg.is_error ? `[error interno: ${msg.subtype ?? "desconocido"}]` : buffer;
         buffer = "";
+        // usage = SOLO este turno (no acumulado, a diferencia de modelUsage) —
+        // exactamente "cuánto contexto se mandó" en la última llamada real.
+        const u = msg.usage;
+        if (u) {
+          lastContextTokens = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+        }
         if (pending.resolve) {
           const resolve = pending.resolve;
           pending.resolve = null;
@@ -134,6 +143,41 @@ export function createBrainSession(ctx?: RouteContext): BrainSession {
       waker.fn = null;
       w(); // despierta el generator para que reevalúe `!state.closed` y termine
     }
+  }
+
+  return { send, close, getContextTokens: () => lastContextTokens };
+}
+
+/**
+ * `ctx` (opcional): liga esta sesión a una conversación real (gap #2 de la
+ * segunda tanda — antes tool_audit_log siempre quedaba con conversation_id
+ * NULL). Se resuelve UNA sola vez acá (no por tool call) y se pasa como
+ * promesa al hook de auditoría. Sin ctx (CLI, sesiones de un solo uso de
+ * proactive.ts) sigue quedando NULL — no hay conversación real que ligar.
+ */
+export function createBrainSession(ctx?: RouteContext): BrainSession {
+  const conversationIdPromise: Promise<number | null> = ctx
+    ? getOrCreateConversation(ctx).catch((err) => {
+        console.error("[session] no pude resolver conversation_id:", err);
+        return null;
+      })
+    : Promise.resolve(null);
+
+  let inner = createInner(conversationIdPromise);
+
+  function send(text: string): Promise<string> {
+    if (inner.getContextTokens() > CONTEXT_RESET_TOKENS) {
+      console.log(
+        `[session] contexto en ~${inner.getContextTokens()} tokens (> ${CONTEXT_RESET_TOKENS}), reiniciando sesión — el historial visible sigue en Postgres (conversationLog.ts), Claude arranca de cero.`,
+      );
+      inner.close();
+      inner = createInner(conversationIdPromise);
+    }
+    return inner.send(text);
+  }
+
+  function close(): void {
+    inner.close();
   }
 
   return { send, close };

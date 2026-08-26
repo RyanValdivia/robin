@@ -45,6 +45,29 @@ export async function getRecentUserMessages(userId: number, sinceHours: number):
   return rows.map((r) => r.text).filter((t): t is string => !!t);
 }
 
+/**
+ * Historial de burbujas para repoblar el Chat al cargar la página — antes
+ * `messages` se escribía (logTurn, abajo) pero nadie lo leía para mostrar:
+ * el Chat vivía 100% en estado de React, recargar la página lo vaciaba
+ * aunque la sesión de Claude siguiera con toda la memoria (ver session.ts).
+ * Trae los últimos `limit` turnos (orden ASC ya armado, no al revés).
+ */
+export async function getConversationHistory(
+  ctx: RouteContext,
+  limit = 200,
+): Promise<Array<{ role: "user" | "assistant"; text: string; created_at: string }>> {
+  const conversationId = await getOrCreateConversation(ctx);
+  const { rows } = await pool.query(
+    `SELECT role, content->>'text' AS text, created_at FROM (
+       SELECT role, content, created_at FROM messages
+       WHERE conversation_id = $1 AND role IN ('user', 'assistant')
+       ORDER BY created_at DESC LIMIT $2
+     ) recientes ORDER BY created_at ASC`,
+    [conversationId, limit],
+  );
+  return rows;
+}
+
 /** Guarda el turno completo (mensaje del usuario + respuesta) de routeMessage() — fire-and-forget. */
 export function logTurn(ctx: RouteContext, category: string, userText: string, assistantText: string): void {
   getOrCreateConversation(ctx)
