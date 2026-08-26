@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 type Reminder = { id: number; text: string; run_at: string; cron_expr?: string | null; channels: string[] };
 
@@ -111,8 +112,30 @@ export function RemindersPanel({ active }: { active: boolean }) {
   // pestaña de Chat abierta. "unsupported" = navegador sin Push API o
   // backend sin VAPID_* configuradas (ver /api/web-push/public-key), estados
   // que se tratan igual porque de cualquier forma no hay nada que ofrecer.
-  const [pushStatus, setPushStatus] = useState<"checking" | "unsupported" | "denied" | "off" | "on">("checking");
+  // "error" = el navegador SÍ tiene la suscripción (pushManager.getSubscription
+  // no da null) pero el server no la tiene guardada — antes esto se mostraba
+  // como "on" igual (nunca se chequeaba si el POST a /api/web-push/subscribe
+  // salía bien), así que quedabas "activado" en la UI para siempre sin que
+  // llegara un solo push real.
+  const [pushStatus, setPushStatus] = useState<"checking" | "unsupported" | "denied" | "off" | "on" | "error">(
+    "checking",
+  );
   const [pushBusy, setPushBusy] = useState(false);
+
+  // Manda la suscripción al server y devuelve si quedó guardada — se usa
+  // tanto al activar como para re-sincronizar la que el navegador ya tenía.
+  async function syncSubscription(sub: PushSubscription): Promise<boolean> {
+    try {
+      const res = await fetch("/api/web-push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -133,7 +156,14 @@ export function RemindersPanel({ active }: { active: boolean }) {
         }
         const reg = await navigator.serviceWorker.register("/sw.js");
         const sub = await reg.pushManager.getSubscription();
-        setPushStatus(sub ? "on" : "off");
+        if (!sub) {
+          setPushStatus("off");
+          return;
+        }
+        // El navegador ya está suscripto — re-sincroniza contra el server cada
+        // vez que se abre el panel (barato, ON CONFLICT del lado del server)
+        // en vez de asumir que porque el navegador la tiene, el server también.
+        setPushStatus((await syncSubscription(sub)) ? "on" : "error");
       } catch {
         setPushStatus("unsupported");
       }
@@ -159,12 +189,9 @@ export function RemindersPanel({ active }: { active: boolean }) {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
       });
-      await fetch("/api/web-push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub.toJSON()),
-      });
-      setPushStatus("on");
+      const ok = await syncSubscription(sub);
+      if (!ok) console.error("el navegador se suscribió pero el server no pudo guardar la suscripción");
+      setPushStatus(ok ? "on" : "error");
     } catch (err) {
       console.error("no pude activar notificaciones:", err);
     } finally {
@@ -410,16 +437,18 @@ export function RemindersPanel({ active }: { active: boolean }) {
         ))}
 
         <div className="flex items-center justify-between gap-2 mt-2 px-1">
-          <p className="text-xs text-muted">
+          <p className={cn("text-xs", pushStatus === "error" ? "text-red-400" : "text-muted")}>
             {pushStatus === "on" && "Notificaciones del navegador activadas — llegan aunque esta pestaña esté cerrada."}
             {pushStatus === "off" && "Los creados acá también se pueden avisar por notificación del navegador."}
+            {pushStatus === "error" &&
+              "El navegador está suscripto pero el server no pudo guardarlo — probá de nuevo."}
             {pushStatus === "denied" && "Notificaciones bloqueadas — habilitalas en los permisos del sitio para activarlas."}
             {pushStatus === "unsupported" && "Este navegador no soporta notificaciones push (o el servidor no las tiene configuradas)."}
             {pushStatus === "checking" && "Revisando notificaciones del navegador..."}
           </p>
-          {pushStatus === "off" && (
+          {(pushStatus === "off" || pushStatus === "error") && (
             <Button variant="outline" size="sm" onClick={enablePush} disabled={pushBusy} className="text-xs shrink-0">
-              {pushBusy ? "Activando..." : "Activar notificaciones"}
+              {pushBusy ? "Activando..." : pushStatus === "error" ? "Reintentar" : "Activar notificaciones"}
             </Button>
           )}
           {pushStatus === "on" && (
