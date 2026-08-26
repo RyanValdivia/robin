@@ -59,6 +59,17 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString("es-PE", { timeZone: "America/Lima", day: "numeric", month: "long" });
 }
 
+// Fecha completa (día de semana + día + mes, sin año — recordatorios viven en el
+// corto plazo) para el subtítulo de cada fila, independiente del header del
+// grupo (que puede quedar fuera de vista al hacer scroll).
+function fullDateLabel(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("es-PE", { timeZone: "America/Lima", weekday: "long", day: "numeric", month: "long" });
+  } catch {
+    return iso;
+  }
+}
+
 export function RemindersPanel() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -333,11 +344,12 @@ export function RemindersPanel() {
 }
 
 function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number) => void; mode: "day" | "recurring" }) {
-  // "day": el header del grupo ya dice el día → la fila solo necesita la hora.
+  // "day": header del grupo ("Hoy"/"Mañana") puede quedar fuera de vista al
+  // scrollear → el subtítulo repite la fecha completa, no solo depende de él.
   // "recurring": no hay grupo por día → mostrar próximo run relativo (día + hora).
   const subtitle =
     mode === "day"
-      ? timeLabel(r.run_at)
+      ? fullDateLabel(r.run_at)
       : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)}`;
   return (
     <div className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3">
@@ -349,7 +361,7 @@ function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number
           {r.cron_expr && <span title={`cron: ${r.cron_expr}`}>🔁 </span>}
           {r.text}
         </div>
-        {mode === "recurring" && <div className="text-xs text-muted">{subtitle}</div>}
+        <div className="text-xs text-muted">{subtitle}</div>
       </div>
       <Button variant="destructive" size="sm" onClick={() => onCancel(r.id)} className="shrink-0">
         Cancelar
