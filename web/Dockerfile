@@ -28,6 +28,7 @@ FROM base AS runner
 ENV NODE_ENV=production
 COPY --from=builder /app/web/.next/standalone ./
 COPY --from=builder /app/web/.next/static ./web/.next/static
+COPY --from=builder /app/web/public ./web/public
 
 # El Agent SDK (rama AGENT) resuelve el binario nativo de la CLI de Claude Code
 # como un optionalDependency por plataforma (@anthropic-ai/claude-agent-sdk-*)

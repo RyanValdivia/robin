@@ -18,6 +18,7 @@ const nextConfig = {
     "pg",
     "ioredis",
     "bullmq",
+    "web-push",
     "@anthropic-ai/claude-agent-sdk",
     "@huggingface/transformers",
   ],

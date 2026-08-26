@@ -766,6 +766,64 @@ después de que la primera tanda (#1-#7) ya estuviera en vivo.
   `up -d --build`, recién después migrar (o migrar dos veces no rompe nada,
   `CREATE TABLE IF NOT EXISTS` es idempotente — así se resolvió acá).
 
+## Push real al navegador (Web Push/VAPID)
+
+Pedido explícito del usuario tras probar `reminders-panel.tsx`: el aviso de
+"todavía no hay push al navegador" quedaba como limitación permanente — se
+implementó de verdad en vez de seguir dependiendo solo del polling de
+`web_notifications` (que solo entrega mientras la pestaña de Chat está
+abierta).
+
+- **Tabla nueva** `web_push_subscriptions` (schema.sql): una fila por
+  `endpoint` (no por `user_id` — el mismo dueño puede tener varias
+  suscripciones activas: celu, laptop, distintos navegadores).
+- **`src/brain/webPush.ts`** (nuevo): wrapper de la librería `web-push`
+  (agregada a dependencies del root `package.json`, no de `web/package.json`
+  — mismo patrón que `pg`/`ioredis`/`bullmq`, resuelve por herencia de
+  `node_modules` y queda en `serverExternalPackages` de `next.config.mjs`
+  para que el standalone la trace/copie sin bundlear). `sendWebPush()` manda
+  a TODAS las suscripciones del usuario, best-effort por fila — un 404/410
+  del push service borra la suscripción sola (browser desinstalado/permiso
+  revocado) en vez de reintentar para siempre.
+- **`scheduler.ts`**: cuando dispara un recordatorio de canal `web`, además
+  de insertar en `web_notifications` (queda el polling como fallback) ahora
+  también llama `sendWebPush()` — si falla o no hay VAPID configurada, no
+  rompe nada, el polling sigue entregando igual.
+- **VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT** (`config.ts`, nuevas):
+  vacías = feature deshabilitada (`webPush.ts` lo loguea y no manda nada).
+  Se generan con `npx web-push generate-vapid-keys`. Mismo `.env.prod` para
+  `robin` y `web` (`env_file` compartido en `docker-compose.prod.yml`), así
+  que un solo par de keys alcanza para los dos procesos.
+- **API routes nuevas** (Next, corren en el proceso Web):
+  `GET /api/web-push/public-key` (la pública, para
+  `pushManager.subscribe()`), `POST /api/web-push/subscribe` (guarda
+  `PushSubscription.toJSON()`), `POST /api/web-push/unsubscribe` (borra por
+  endpoint).
+- **`web/public/sw.js`** (nuevo, primer archivo en `web/public/` — antes no
+  existía la carpeta): service worker mínimo, solo `push` (muestra la
+  notificación) y `notificationclick` (foco a una pestaña existente o abre
+  una nueva). No cachea nada — Robin no es una PWA offline, esto es solo el
+  hook que exige la Push API. `Dockerfile` actualizado para copiar
+  `web/public` al standalone (antes no hacía falta, no existía la carpeta).
+- **`reminders-panel.tsx`**: botón "Activar notificaciones"/"Desactivar" —
+  pide permiso (`Notification.requestPermission()`), registra el service
+  worker, se suscribe con la pública convertida a `Uint8Array`
+  (`urlBase64ToUint8Array()`, nuevo helper) y postea la suscripción. Estados
+  cubiertos: sin soporte del navegador, sin VAPID configurada en el server,
+  permiso denegado, activado/desactivado.
+- **No verificado en vivo todavía** — falta: generar VAPID keys de prod
+  (las del `.env` local NO se reusan, son solo para dev), agregarlas a
+  `.env.prod` del VPS, migrar el schema (`web_push_subscriptions`) y
+  rebuildear `robin`+`web` — **mismo orden que el gotcha ya documentado
+  arriba: primero `up -d --build`, recién después migrar** (el schema que
+  lee `docker compose exec robin node -e "...schema.sql..."` es el
+  BAKEADO EN LA IMAGEN vieja si se corre antes del rebuild).
+- Typecheck limpio (`tsc --noEmit` en `src/` y `web/`) y `npx next build`
+  local sin errores (confirmado que `web-push` se traza y copia bien al
+  standalone: `.next/standalone/node_modules/web-push` presente). `npm test`
+  sigue en 15/15 (sin tests nuevos — no había nada puro que testear acá, es
+  todo I/O de browser/Postgres/push service).
+
 ## Plan completo
 
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`

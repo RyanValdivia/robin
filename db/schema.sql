@@ -87,6 +87,22 @@ CREATE TABLE IF NOT EXISTS web_notifications (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Push real al navegador (Web Push/VAPID) — antes web_notifications de arriba
+-- era el único canal para 'web' y dependía de polling con la pestaña de Chat
+-- abierta. Una suscripción por (browser, perfil): el mismo user puede tener
+-- varias filas (celu, laptop, distintos navegadores) -> UNIQUE por endpoint,
+-- no por user_id. p256dh/auth son las claves públicas que manda el propio
+-- browser al suscribirse (PushSubscription.toJSON().keys), necesarias para
+-- cifrar el payload en sendWebPush() (ver brain/webPush.ts).
+CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  endpoint    TEXT NOT NULL UNIQUE,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS groq_usage_log (
   id                 SERIAL PRIMARY KEY,
   prompt_tokens      INTEGER NOT NULL,

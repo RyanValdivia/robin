@@ -7,6 +7,7 @@ import IORedis from "ioredis";
 import { Queue, Worker, type Job } from "bullmq";
 import { REDIS_URL } from "../config.ts";
 import { pool } from "../db.ts";
+import { sendWebPush } from "./webPush.ts";
 
 type ReminderPayload = { channel: string; externalId: string; text: string };
 
@@ -167,11 +168,19 @@ export function startSchedulerWorker(): Worker {
         // es una función en memoria del proceso que registra el adapter, y
         // el worker corre en el proceso de Telegram — un "sender" de Web ahí
         // no tendría a quién llamar). En vez de eso, la fila queda para que
-        // el navegador la levante por polling (ver api/web-notifications).
+        // el navegador la levante por polling (ver api/web-notifications) —
+        // fallback que sigue funcionando aunque no haya suscripción de push
+        // o esté deshabilitado (sin VAPID_* configuradas).
         await pool.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
           task.user_id,
           payload.text,
         ]);
+        // Push real (OS-level, funciona con la pestaña/navegador cerrado) —
+        // best-effort: si falla o no hay suscripciones, el polling de arriba
+        // igual entrega el recordatorio la próxima vez que se abra la Web.
+        await sendWebPush(task.user_id, payload.text).catch((err) =>
+          console.error("[scheduler] error mandando web push:", err),
+        );
       } else if (sender) {
         await sender(payload.channel, payload.externalId, `⏰ ${payload.text}`);
       } else {

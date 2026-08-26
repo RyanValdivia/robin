@@ -26,6 +26,29 @@ function limaMidnightUTC(d: Date): number {
   return Date.UTC(+p.year, +p.month - 1, +p.day);
 }
 
+// Traduce un cron_expr "m h * * dow" a texto humano tipo Calendar,
+// ej. "Cada día a las 08:00" / "Cada lunes a las 09:30".
+function cronLabel(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [m, h, , , dow] = parts;
+  const hh = h.padStart(2, "0");
+  const mm = m.padStart(2, "0");
+  if (dow === "*") return `Cada día a las ${hh}:${mm}`;
+  const dayIdx = Number(dow);
+  if (!Number.isNaN(dayIdx) && DOW[dayIdx]) return `Cada ${DOW[dayIdx]} a las ${hh}:${mm}`;
+  return `A las ${hh}:${mm} (${cron})`;
+}
+
+// applicationServerKey de pushManager.subscribe() quiere un Uint8Array, no el
+// string base64url que devuelve /api/web-push/public-key.
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   const diffDays = Math.round((limaMidnightUTC(d) - limaMidnightUTC(new Date())) / 86_400_000);
@@ -46,6 +69,92 @@ export function RemindersPanel() {
   const [time, setTime] = useState("08:00");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Push real al navegador (VAPID) — antes solo había polling con la
+  // pestaña de Chat abierta. "unsupported" = navegador sin Push API o
+  // backend sin VAPID_* configuradas (ver /api/web-push/public-key), estados
+  // que se tratan igual porque de cualquier forma no hay nada que ofrecer.
+  const [pushStatus, setPushStatus] = useState<"checking" | "unsupported" | "denied" | "off" | "on">("checking");
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushStatus("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setPushStatus("denied");
+        return;
+      }
+      try {
+        const keyRes = await fetch("/api/web-push/public-key");
+        const { publicKey } = await keyRes.json();
+        if (!publicKey) {
+          setPushStatus("unsupported"); // servidor sin VAPID_* configuradas
+          return;
+        }
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        const sub = await reg.pushManager.getSubscription();
+        setPushStatus(sub ? "on" : "off");
+      } catch {
+        setPushStatus("unsupported");
+      }
+    })();
+  }, []);
+
+  async function enablePush() {
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushStatus("denied");
+        return;
+      }
+      const keyRes = await fetch("/api/web-push/public-key");
+      const { publicKey } = await keyRes.json();
+      if (!publicKey) {
+        setPushStatus("unsupported");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      });
+      await fetch("/api/web-push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      setPushStatus("on");
+    } catch (err) {
+      console.error("no pude activar notificaciones:", err);
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function disablePush() {
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/web-push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setPushStatus("off");
+    } catch (err) {
+      console.error("no pude desactivar notificaciones:", err);
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   async function load() {
     try {
@@ -129,10 +238,10 @@ export function RemindersPanel() {
           <h2 className="text-base font-semibold text-white tracking-tight">Recordatorios</h2>
           <div className="flex gap-1.5">
             <Button variant="ghost" size="sm" onClick={load} className="gap-1.5 text-xs">
-              <RotateCw size={13} /> actualizar
+              <RotateCw size={13} /> Actualizar
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowForm((s) => !s)} className="gap-1.5 text-xs">
-              {showForm ? <X size={13} /> : <Plus size={13} />} {showForm ? "cerrar" : "nuevo"}
+              {showForm ? <X size={13} /> : <Plus size={13} />} {showForm ? "Cerrar" : "Nuevo"}
             </Button>
           </div>
         </div>
@@ -143,10 +252,10 @@ export function RemindersPanel() {
             <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Qué te tengo que recordar" />
             <div className="flex gap-4 text-sm text-gray-300">
               <label className="flex items-center gap-1.5">
-                <input type="radio" checked={freq === "once"} onChange={() => setFreq("once")} /> puntual
+                <input type="radio" checked={freq === "once"} onChange={() => setFreq("once")} /> Puntual
               </label>
               <label className="flex items-center gap-1.5">
-                <input type="radio" checked={freq === "recurring"} onChange={() => setFreq("recurring")} /> recurrente
+                <input type="radio" checked={freq === "recurring"} onChange={() => setFreq("recurring")} /> Recurrente
               </label>
             </div>
             {freq === "once" ? (
@@ -198,9 +307,25 @@ export function RemindersPanel() {
           </div>
         ))}
 
-        <p className="text-xs text-muted mt-2">
-          Los creados acá se entregan por Telegram (todavía no hay push al navegador).
-        </p>
+        <div className="flex items-center justify-between gap-2 mt-2 px-1">
+          <p className="text-xs text-muted">
+            {pushStatus === "on" && "Notificaciones del navegador activadas — llegan aunque esta pestaña esté cerrada."}
+            {pushStatus === "off" && "Los creados acá también se pueden avisar por notificación del navegador."}
+            {pushStatus === "denied" && "Notificaciones bloqueadas — habilitalas en los permisos del sitio para activarlas."}
+            {pushStatus === "unsupported" && "Este navegador no soporta notificaciones push (o el servidor no las tiene configuradas)."}
+            {pushStatus === "checking" && "Revisando notificaciones del navegador..."}
+          </p>
+          {pushStatus === "off" && (
+            <Button variant="outline" size="sm" onClick={enablePush} disabled={pushBusy} className="text-xs shrink-0">
+              {pushBusy ? "Activando..." : "Activar notificaciones"}
+            </Button>
+          )}
+          {pushStatus === "on" && (
+            <Button variant="ghost" size="sm" onClick={disablePush} disabled={pushBusy} className="text-xs shrink-0">
+              {pushBusy ? "Desactivando..." : "Desactivar"}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -214,10 +339,12 @@ function ReminderRow({ r, onCancel }: { r: Reminder; onCancel: (id: number) => v
           {r.cron_expr && <span title={`cron: ${r.cron_expr}`}>🔁 </span>}
           {r.text}
         </div>
-        <div className="text-xs text-muted">{r.cron_expr ? `próximo: ${formatDate(r.run_at)}` : formatDate(r.run_at)}</div>
+        <div className="text-xs text-muted">
+          {r.cron_expr ? `${cronLabel(r.cron_expr)} · próximo ${formatDate(r.run_at)}` : formatDate(r.run_at)}
+        </div>
       </div>
       <Button variant="destructive" size="sm" onClick={() => onCancel(r.id)} className="shrink-0">
-        cancelar
+        Cancelar
       </Button>
     </div>
   );

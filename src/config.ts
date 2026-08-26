@@ -45,4 +45,15 @@ export const PIPER_URL = process.env.PIPER_URL ?? "";
 // docker-compose.prod.yml y src/adapters/web/index.ts).
 export const WEB_UI_PORT = Number(process.env.WEB_UI_PORT ?? "3000");
 
+// Web Push (VAPID) — push real al navegador para recordatorios del canal
+// 'web' (antes: solo polling con la pestaña de Chat abierta, ver
+// brain/webPush.ts). Vacío = feature deshabilitada (sendWebPush() no manda
+// nada, queda solo el polling de siempre) — generar con
+// `npx web-push generate-vapid-keys`. VAPID_SUBJECT debe ser un mailto: o
+// https: real (lo exige la spec Web Push, algunos push services lo rechazan
+// si no).
+export const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? "";
+export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
+export const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "";
+
 if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });
