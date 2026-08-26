@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { RotateCw, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type Reminder = { id: number; text: string; run_at: string; cron_expr?: string | null; channels: string[] };
 
@@ -77,7 +79,8 @@ function fullDateLabel(iso: string): string {
 }
 
 export function RemindersPanel({ active }: { active: boolean }) {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [reminders, setReminders] = useState<Reminder[] | null>(null); // null = todavía no cargó
+  const [linked, setLinked] = useState<string[]>(["web"]); // canales realmente vinculados (ver /api/reminders GET)
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
   const [freq, setFreq] = useState<"once" | "recurring">("once");
@@ -179,6 +182,11 @@ export function RemindersPanel({ active }: { active: boolean }) {
       const res = await fetch("/api/reminders");
       const data = await res.json();
       setReminders(data.reminders || []);
+      const linkedNow: string[] = data.linkedChannels || ["web"];
+      setLinked(linkedNow);
+      // Si el form todavía tiene marcado un canal que ya no está vinculado
+      // (ej. se abrió antes de que cargara), lo destilda solo.
+      setChannels((cs) => cs.filter((c) => linkedNow.includes(c)));
     } catch {
       // silencioso — la UI simplemente queda con lo último cargado
     }
@@ -247,8 +255,9 @@ export function RemindersPanel({ active }: { active: boolean }) {
 
   const { recurring, byDay } = useMemo(() => {
     const byTime = (a: Reminder, b: Reminder) => +new Date(a.run_at) - +new Date(b.run_at);
-    const recurring = reminders.filter((r) => r.cron_expr).sort(byTime);
-    const once = reminders.filter((r) => !r.cron_expr).sort(byTime);
+    const all = reminders ?? [];
+    const recurring = all.filter((r) => r.cron_expr).sort(byTime);
+    const once = all.filter((r) => !r.cron_expr).sort(byTime);
     const byDay = new Map<string, Reminder[]>();
     for (const r of once) {
       const label = dayLabel(r.run_at);
@@ -274,65 +283,82 @@ export function RemindersPanel({ active }: { active: boolean }) {
         </div>
 
         {showForm && (
-          <div className="bg-panel border border-border rounded-xl p-4 mb-5 flex flex-col gap-3">
+          <div className="bg-panel border border-border rounded-xl p-4 mb-5 flex flex-col gap-4">
             {error && <div className="text-xs text-red-400">{error}</div>}
+
             <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Qué te tengo que recordar" />
-            <div className="flex gap-4 text-sm text-gray-300">
-              <label className="flex items-center gap-1.5">
-                <input type="radio" checked={freq === "once"} onChange={() => setFreq("once")} /> Puntual
-              </label>
-              <label className="flex items-center gap-1.5">
-                <input type="radio" checked={freq === "recurring"} onChange={() => setFreq("recurring")} /> Recurrente
-              </label>
-            </div>
-            {freq === "once" ? (
-              <Input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-            ) : (
-              <div className="flex gap-2">
-                <select
-                  value={dow}
-                  onChange={(e) => setDow(e.target.value)}
-                  className="h-9 rounded-lg border border-border bg-panel px-2.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Cuándo</span>
+              <div className="inline-flex self-start rounded-lg border border-border bg-panel2 p-0.5">
+                <Button
+                  type="button"
+                  variant={freq === "once" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setFreq("once")}
+                  className="h-7 px-3 text-xs"
                 >
-                  <option value="*">Todos los días</option>
-                  {DOW.map((d, i) => (
-                    <option key={i} value={i}>
-                      Cada {d}
-                    </option>
-                  ))}
-                </select>
-                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
+                  Puntual
+                </Button>
+                <Button
+                  type="button"
+                  variant={freq === "recurring" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setFreq("recurring")}
+                  className="h-7 px-3 text-xs"
+                >
+                  Recurrente
+                </Button>
               </div>
-            )}
-            <div className="flex gap-4 text-sm text-gray-300">
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
+              {freq === "once" ? (
+                <Input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+              ) : (
+                <div className="flex gap-2">
+                  <Select value={dow} onChange={(e) => setDow(e.target.value)} className="flex-1">
+                    <option value="*">Todos los días</option>
+                    {DOW.map((d, i) => (
+                      <option key={i} value={i}>
+                        Cada {d}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Avisar por</span>
+              <div className="flex gap-4">
+                <Checkbox
+                  label="Navegador"
                   checked={channels.includes("web")}
                   onChange={(e) =>
                     setChannels((cs) => (e.target.checked ? [...cs, "web"] : cs.filter((c) => c !== "web")))
                   }
                 />
-                Navegador
-              </label>
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
+                <Checkbox
+                  label="Telegram"
                   checked={channels.includes("telegram")}
+                  disabled={!linked.includes("telegram")}
+                  hint={!linked.includes("telegram") ? "No tenés Telegram vinculado a esta cuenta" : undefined}
                   onChange={(e) =>
                     setChannels((cs) => (e.target.checked ? [...cs, "telegram"] : cs.filter((c) => c !== "telegram")))
                   }
                 />
-                Telegram
-              </label>
+              </div>
             </div>
+
             <Button onClick={create} disabled={saving} size="sm" className="self-start">
               {saving ? "Creando..." : "Crear"}
             </Button>
           </div>
         )}
 
-        {reminders.length === 0 && <div className="text-sm text-muted">No hay recordatorios pendientes.</div>}
+        {reminders === null && <div className="text-sm text-muted">Cargando...</div>}
+        {reminders !== null && reminders.length === 0 && (
+          <div className="text-sm text-muted">No hay recordatorios pendientes.</div>
+        )}
 
         {recurring.length > 0 && (
           <div className="mb-5">

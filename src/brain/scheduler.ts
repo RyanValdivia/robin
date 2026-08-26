@@ -171,6 +171,23 @@ export async function recentWebNotifications(userId: number): Promise<Array<{ id
   return rows;
 }
 
+/**
+ * Canales a los que HOY se le puede mandar algo a este usuario — 'web'
+ * siempre (no depende de vincular nada, usa userId directo), el resto solo
+ * si hay una fila en channel_identities. La Web UI la usa para no ofrecer
+ * marcar un canal que de todas formas se va a caer en silencio al disparar
+ * (ver externalIdFor más abajo).
+ */
+export async function linkedChannels(userId: number): Promise<string[]> {
+  const { rows } = await pool.query<{ channel: string }>(
+    `SELECT DISTINCT channel FROM channel_identities WHERE user_id = $1`,
+    [userId],
+  );
+  const linked = new Set(rows.map((r) => r.channel));
+  linked.add("web");
+  return ALL_CHANNELS.filter((c) => linked.has(c));
+}
+
 /** external_id del usuario para un canal dado (ej. chat id de Telegram) — mismo mapeo que auth.ts. */
 async function externalIdFor(userId: number, channel: string): Promise<string | null> {
   const { rows } = await pool.query<{ external_id: string }>(
