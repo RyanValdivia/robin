@@ -124,13 +124,14 @@ export function AgendaPanel({ active }: { active: boolean }) {
     }
   }
 
-  // Mismo label (sin importar mayúsculas) = mismo curso del lado del server
-  // (get-or-create, ver agenda.ts) — acá solo es una ayuda visual: si lo que
-  // estás tipeando ya existe, mostrar con qué color/docente va a quedar,
-  // ANTES de guardar. No autocompleta el campo de docente si vos ya
-  // escribiste algo (no pisa lo que estás tipeando).
+  // Mismo label (sin mayúsculas ni tildes) = mismo curso del lado del server
+  // (get-or-create con unaccent(), ver agenda.ts) — acá solo es una ayuda
+  // visual: si lo que estás tipeando ya existe, mostrar con qué color/
+  // docente va a quedar, ANTES de guardar. normalize("NFD") + sacar
+  // diacríticos es el equivalente en JS de unaccent() en Postgres.
+  const normalize = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const matchingCourse = useMemo(
-    () => courses.find((c) => c.name.toLowerCase() === label.trim().toLowerCase()),
+    () => courses.find((c) => normalize(c.name) === normalize(label)),
     [courses, label],
   );
 

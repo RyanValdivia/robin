@@ -42,9 +42,14 @@ const OTHER_COLOR = "#8b8a86";
 /**
  * Get-or-create por nombre (insensible a mayúsculas) — la pieza que hace que
  * "Cálculo" mencionado en una clase recurrente y después en un examen
- * puntual sea EL MISMO curso, no dos etiquetas parecidas. Si ya existe y le
- * pasan un teacher nuevo, lo completa solo si antes no tenía (no pisa un
- * dato ya cargado por una mención ambigua después).
+ * puntual sea EL MISMO curso, no dos etiquetas parecidas. El match usa
+ * unaccent() además de lower() — "Calculo" (sin tilde, typo típico al
+ * tipear rápido o por chat) también resuelve al mismo curso que "Cálculo".
+ * No es matcheo difuso (no perdona errores de tipeo tipo "Clculo") — eso sí
+ * arriesgaría fusionar cursos que en realidad son distintos (ej. "Física I"
+ * vs "Física II" son parecidísimos mal comparados). Si ya existe y le pasan
+ * un teacher nuevo, lo completa solo si antes no tenía (no pisa un dato ya
+ * cargado por una mención ambigua después).
  *
  * Nota de concurrencia: el color se asigna contando filas existentes — con
  * dos altas simultáneas del mismo usuario podrían pisarse el mismo color.
@@ -54,7 +59,8 @@ const OTHER_COLOR = "#8b8a86";
 async function getOrCreateCourse(userId: number, name: string, teacher?: string): Promise<AgendaCourse> {
   const trimmed = name.trim();
   const { rows: existing } = await pool.query<AgendaCourse>(
-    `SELECT id, name, teacher, color FROM agenda_courses WHERE user_id = $1 AND lower(name) = lower($2)`,
+    `SELECT id, name, teacher, color FROM agenda_courses
+     WHERE user_id = $1 AND lower(unaccent(name)) = lower(unaccent($2))`,
     [userId, trimmed],
   );
   if (existing.length > 0) {

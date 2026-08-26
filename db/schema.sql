@@ -2,6 +2,7 @@
 -- Ver plan: quisiera-hacer-algo-asi-squishy-kurzweil.md
 
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS unaccent; -- matcheo de nombre de curso sin tilde, ver agenda.ts
 
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
