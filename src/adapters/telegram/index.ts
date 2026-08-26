@@ -4,7 +4,7 @@ import { Bot, InputFile, type Context } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "../../config.ts";
 import { isOwner, getOwnerUserId } from "../../brain/auth.ts";
 import { createBrainSession, type BrainSession } from "../../brain/session.ts";
-import { routeMessage } from "../../brain/router.ts";
+import { routeMessage, type RouteContext } from "../../brain/router.ts";
 import { registerOutboundSender, startSchedulerWorker } from "../../brain/scheduler.ts";
 import { startProactiveWorker, registerProactiveJobs } from "../../brain/proactive.ts";
 import { sttAvailable, transcribeAudio } from "../../brain/stt.ts";
@@ -22,10 +22,10 @@ const bot = new Bot(TELEGRAM_BOT_TOKEN);
 // chat mantiene su propio hilo de conversación con Claude.
 const sessions = new Map<number, BrainSession>();
 
-function sessionFor(chatId: number): BrainSession {
+function sessionFor(chatId: number, ctx?: RouteContext): BrainSession {
   let s = sessions.get(chatId);
   if (!s) {
-    s = createBrainSession();
+    s = createBrainSession(ctx); // ctx solo importa en la creación (liga tool_audit_log a la conversación)
     sessions.set(chatId, s);
   }
   return s;
@@ -76,11 +76,8 @@ async function handleIncomingText(
     // El ctx (userId/channel/externalId) es lo que necesita un recordatorio
     // DIRECT (V5) para saber a quién avisar cuando dispare.
     const userId = await getOwnerUserId(); // solo llega acá si isOwner ya dio true
-    const reply = await routeMessage(
-      text,
-      () => sessionFor(chatId).send(text),
-      userId ? { userId, channel: "telegram", externalId: fromId } : undefined,
-    );
+    const routeCtx: RouteContext | undefined = userId ? { userId, channel: "telegram", externalId: fromId } : undefined;
+    const reply = await routeMessage(text, () => sessionFor(chatId, routeCtx).send(text), routeCtx);
     const full = prefix + (reply || "(sin respuesta)");
     for (const chunk of splitForTelegram(full)) {
       await ctx.reply(chunk);

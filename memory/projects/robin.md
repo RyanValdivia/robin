@@ -660,6 +660,99 @@ minimalista del resto de la Web UI), formulario de alta para recordatorios
   `GET /api/reminders` → `POST .../cancel` lo cancela. Los tres round-trips
   probados contra la Web real del VPS, no solo localmente.
 
+## Segunda tanda de gaps (#2 audit log, #3 web notifications, #4 memoria pasiva instantánea, tests, editor, review)
+
+Usuario pidió atacar 5 de los pendientes que quedaron documentados arriba,
+después de que la primera tanda (#1-#7) ya estuviera en vivo.
+
+- **Audit log ligado a conversación** (antes `conversation_id` siempre NULL):
+  `hooks.ts` — `toolAuditHook` fijo -> `makeToolAuditHook(conversationIdPromise)`
+  factory. `session.ts` resuelve `getOrCreateConversation(ctx)` UNA vez por
+  sesión (no por tool call) y pasa la promesa al hook. `createBrainSession(ctx?)`
+  ahora acepta ctx opcional — hilado hasta los 3 call sites reales
+  (`telegram/index.ts` sessionFor, `web/lib/session.ts` getSession, ambos ya
+  tenían el ctx a mano antes de crear la sesión). CLI y sesiones de un solo uso
+  de `proactive.ts` siguen sin ctx (conversation_id sigue NULL ahí, aceptado).
+- **Recordatorios Web ahora se entregan EN la Web** (antes: sin canal de
+  entrega propio, dependía de qué canal eligiera `resolveOwnerChannel()`):
+  tabla nueva `web_notifications` (schema.sql), el worker de `scheduler.ts`
+  inserta ahí cuando `payload.channel === 'web'` (en vez de llamar a un
+  sender que no existiría para ese canal — el worker corre en el proceso de
+  Telegram). `web/app/api/reminders` POST ahora fija `channel/externalId` a
+  `'web'/'owner'` en vez de `resolveOwnerChannel()` (que priorizaba Telegram).
+  `chat-panel.tsx` hace polling cada 20s a `/api/web-notifications` e inyecta
+  la notificación como burbuja de chat (mismo prefijo ⏰ que Telegram).
+  **Bug encontrado en code review y arreglado antes de deployar:** la primera
+  versión "consumía" la notificación en el primer GET (`UPDATE...RETURNING`)
+  — con la Web abierta en dos pestañas/dispositivos a la vez, el segundo
+  nunca la veía. Fix: sin consumo, devuelve por ventana de tiempo (15 min),
+  dedupe por id del lado del cliente (`Set` en un ref).
+- **Memoria pasiva instantánea** (antes: solo batched cada 24h/7d):
+  `systemPrompt.ts` — instrucción nueva pidiéndole a Claude que llame
+  `remember()` en el momento si nota un hecho duradero, sin esperar a que se
+  lo pidan. Costo marginal cero (mismo turno de Claude que ya se está
+  pagando en la rama AGENT) — el batched de `proactive.ts` (pasada anterior)
+  queda como red de seguridad para lo que Claude no capture en el momento.
+- **Tests** (antes: cero `.test.ts` propios): `node:test` nativo (sin
+  dependencia nueva) — `src/brain/classifyHeuristic.ts` nuevo, extrae la
+  heurística pura de `router.ts` (regexes + `classifyHeuristic()`) a un
+  módulo SIN imports de red/DB. Necesario: importar `router.ts` completo
+  para testear solo regexes de texto arrastraba `scheduler.ts`
+  (BullMQ/ioredis) y `conversationLog.ts` (pg Pool) — ioredis/BullMQ abren
+  conexión a nivel de módulo y el proceso de test quedaba colgado
+  esperándolas (nunca terminaba, tuvo que matarse a mano). `memory.ts`
+  también exporta ahora `parseWikilinks`/`exactScore`/`labelForCategory`
+  (antes privados) para testearlos sin mocks. `npm test` -> `tsx --test`
+  (sin path — así descubre `*.test.ts` recursivo solo; `tsx --test src`
+  con un directorio explícito reventaba con `ERR_UNSUPPORTED_DIR_IMPORT`,
+  bug de interacción tsx+ESM con imports de directorio). 15 tests, corre
+  limpio y rápido (~0.5s).
+- **Editor de notas: preview + autocomplete de `[[wikilinks]]`** (antes:
+  textarea plano): `memory-panel.tsx` — tabs Editar/Preview (reusa
+  `renderMarkdown()` ya existente, mismo trust boundary que la vista de
+  solo-lectura de antes — un solo dueño autenticado editando sus propias
+  notas). Autocomplete: detecta `[[algo` sin cerrar antes del cursor (regex
+  sobre el texto previo al cursor, se recalcula en `onChange`/`onSelect`),
+  lista hasta 6 notas que matchean, click inserta `[[Nombre]]` y reposiciona
+  el cursor. No sigue el caret en píxeles (dropdown pegado bajo el textarea,
+  no flotando exacto) — simplificación a propósito.
+- **Review real corrido** (antes: nunca `/code-review` ni `/security-review`
+  sobre el proyecto): `/security-review` sobre el diff completo de esta
+  tanda -> 0 findings de alta confianza (repasó auth pattern de las rutas
+  nuevas, IDOR en `web_notifications`, `dangerouslySetInnerHTML` del preview
+  nuevo — todo consistente con patrones ya establecidos). `/code-review high`
+  sobre `src/ web/` -> 6 findings; 2 arreglados (el race de multi-pestaña de
+  arriba, y el test script hardcodeado), 4 aceptados como limitación
+  documentada en vez de arreglados:
+  - Worker de recordatorios corre solo en el proceso de Telegram — si ese
+    proceso cae, los recordatorios de canal 'web' tampoco disparan. Evaluado
+    correr un segundo worker en el proceso Web para redundancia (BullMQ
+    soporta múltiples workers por queue) — descartado: un segundo worker
+    activo puede terminar tomando un job de un recordatorio de TELEGRAM,
+    encontrar que no tiene sender registrado (Web nunca llama
+    `registerOutboundSender`), y marcarlo `sent` igual sin haberlo entregado
+    — cambia un modo de falla angosto por una condición de carrera nueva y
+    peor. No se tocó.
+  - `getSession(ctx)` en `web/lib/session.ts` solo usa `ctx` en la primera
+    creación del singleton — si esa primera llamada real ocurriera con
+    `ctx` undefined (getOwnerUserId() legítimamente null, ej. antes de
+    correr `bootstrap-owner`), `conversation_id` queda NULL para toda la
+    vida del proceso. Riesgo bajo en la práctica (bootstrap-owner es un paso
+    obligatorio de setup inicial, antes de que haya tráfico real) — aceptado
+    sin fix, arreglarlo bien requeriría poder "re-ligar" una sesión ya
+    creada, complejidad no justificada para una ventana de arranque.
+  - `logTurn()` (conversationLog.ts) resuelve su propia conversación con un
+    upsert independiente del que ya cachea `session.ts` para el audit log —
+    en turnos AGENT son dos upserts por mensaje en vez de uno. Aceptado: el
+    upsert es barato (`ON CONFLICT DO UPDATE` sobre índice único), y en
+    turnos DIRECT/KNOWLEDGE (sin sesión creada) es la ÚNICA resolución que
+    existe — no hay promesa cacheada que reusar ahí, así que no es
+    duplicación real en esos casos.
+  - Canal 'web' hardcodeado como caso especial dentro del worker genérico de
+    `scheduler.ts`, en vez de generalizar `registerOutboundSender` a un
+    registro por canal. Aceptado (YAGNI) — no hay un tercer canal de entrega
+    todavía que justifique la abstracción.
+
 ## Plan completo
 
 `C:\Users\LENOVO\.claude\plans\quisiera-hacer-algo-asi-squishy-kurzweil.md`

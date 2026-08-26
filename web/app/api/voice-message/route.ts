@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOwnerUserId } from "@brain/auth.ts";
-import { routeMessage } from "@brain/router.ts";
+import { routeMessage, type RouteContext } from "@brain/router.ts";
 import { sttAvailable, transcribeAudio } from "@brain/stt.ts";
 import { ttsAvailable, synthesizeSpeech } from "@brain/tts.ts";
 import { getSession } from "@/lib/session";
@@ -25,11 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ transcript: "", reply: "No entendí el audio, ¿lo repetís?", audio: null });
     }
     const userId = await getOwnerUserId();
-    const reply = await routeMessage(
-      transcript,
-      () => getSession().send(transcript),
-      userId ? { userId, channel: "web", externalId: "owner" } : undefined,
-    );
+    const ctx: RouteContext | undefined = userId ? { userId, channel: "web", externalId: "owner" } : undefined;
+    const reply = await routeMessage(transcript, () => getSession(ctx).send(transcript), ctx);
     let audioBase64: string | null = null;
     if (ttsAvailable() && reply) {
       try {

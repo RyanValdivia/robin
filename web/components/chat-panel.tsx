@@ -38,6 +38,11 @@ export function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  // Ids de notificaciones (recordatorios canal 'web') ya mostradas — el
+  // endpoint devuelve por ventana de tiempo, no por "no leídas" (así varias
+  // pestañas/dispositivos pollingeando a la vez no se pisan, ver code
+  // review) — el dedupe de "ya la mostré" queda acá, del lado del cliente.
+  const seenNotificationIds = useRef<Set<number>>(new Set());
 
   // Auto-resize del textarea (crece con el contenido hasta max-h-36).
   useEffect(() => {
@@ -52,6 +57,28 @@ export function ChatPanel() {
       .then((r) => r.json())
       .then(setVoice)
       .catch(() => {});
+  }, []);
+
+  // Recordatorios creados desde la Web (canal 'web', ver scheduler.ts) no
+  // tienen push real al navegador — polling simple. El panel de Chat queda
+  // siempre montado (app-shell.tsx solo lo esconde con CSS al cambiar de
+  // tab), así que esto sigue corriendo aunque el usuario esté en otra tab.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch("/api/web-notifications")
+        .then((r) => r.json())
+        .then((data) => {
+          const notifications: Array<{ id: number; text: string }> = data.notifications || [];
+          const fresh = notifications.filter((n) => !seenNotificationIds.current.has(n.id));
+          if (fresh.length === 0) return;
+          for (const n of fresh) seenNotificationIds.current.add(n.id);
+          const time = formatTime();
+          setMessages((m) => [...m, ...fresh.map((n) => ({ role: "bot" as const, text: `⏰ ${n.text}`, time }))]);
+          scrollLog();
+        })
+        .catch(() => {});
+    }, 20_000);
+    return () => clearInterval(id);
   }, []);
 
   function scrollLog() {

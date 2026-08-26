@@ -7,8 +7,14 @@
 import { pool } from "../db.ts";
 import type { RouteContext } from "./router.ts";
 
-/** Conversación por (user, channel, external_conversation_id) — upsert idempotente, sobrevive restarts. */
-async function getOrCreateConversation(ctx: RouteContext): Promise<number> {
+/**
+ * Conversación por (user, channel, external_conversation_id) — upsert
+ * idempotente, sobrevive restarts. Exportada (no solo uso interno de
+ * logTurn): session.ts la resuelve una vez al crear una BrainSession para
+ * ligar tool_audit_log a la conversación real (gap #2 de la segunda tanda,
+ * antes quedaba siempre NULL).
+ */
+export async function getOrCreateConversation(ctx: RouteContext): Promise<number> {
   const { rows } = await pool.query(
     `INSERT INTO conversations (user_id, channel, external_conversation_id)
      VALUES ($1, $2, $3)

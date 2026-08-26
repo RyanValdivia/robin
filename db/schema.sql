@@ -71,6 +71,22 @@ CREATE TABLE IF NOT EXISTS message_log (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Entrega para el canal 'web' (gap: "recordatorios creados en Web no se
+-- entregan ahí" — Web no tiene un sendMessage() como Telegram, así que en vez
+-- de una función en memoria (registerOutboundSender) queda una fila acá que
+-- el propio navegador levanta por polling, ver web/app/api/web-notifications.
+-- Sin columna "delivered_at"/consumo: con la Web abierta en varias pestañas o
+-- dispositivos a la vez, cada uno hace su propio polling — consumir en el
+-- primer GET dejaba al resto sin ver la notificación nunca (encontrado en
+-- code review). recentWebNotifications() (scheduler.ts) devuelve por ventana
+-- de tiempo, dedupe por id queda del lado del cliente.
+CREATE TABLE IF NOT EXISTS web_notifications (
+  id            SERIAL PRIMARY KEY,
+  user_id       INTEGER NOT NULL REFERENCES users(id),
+  text          TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS groq_usage_log (
   id                 SERIAL PRIMARY KEY,
   prompt_tokens      INTEGER NOT NULL,

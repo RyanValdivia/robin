@@ -5,10 +5,12 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { ROOT } from "../config.ts";
 import { memoryMcpServer } from "./tools.ts";
 import { buildMcpServers } from "./mcp.ts";
-import { bashGuardHook, toolAuditHook, compactionLogHook } from "./hooks.ts";
+import { bashGuardHook, makeToolAuditHook, compactionLogHook } from "./hooks.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
+import { getOrCreateConversation } from "./conversationLog.ts";
+import type { RouteContext } from "./router.ts";
 
-function brainOptions(): Options {
+function brainOptions(conversationIdPromise: Promise<number | null>): Options {
   return {
     settingSources: [], // aislado: no hereda hooks/MCP/settings del usuario
     strictMcpConfig: true,
@@ -19,7 +21,7 @@ function brainOptions(): Options {
     allowDangerouslySkipPermissions: true,
     hooks: {
       PreToolUse: [{ matcher: "Bash", hooks: [bashGuardHook] }],
-      PostToolUse: [{ hooks: [toolAuditHook] }],
+      PostToolUse: [{ hooks: [makeToolAuditHook(conversationIdPromise)] }],
       PreCompact: [{ hooks: [compactionLogHook] }],
       PostCompact: [{ hooks: [compactionLogHook] }],
     },
@@ -46,7 +48,21 @@ export type BrainSession = {
   close: () => void;
 };
 
-export function createBrainSession(): BrainSession {
+/**
+ * `ctx` (opcional): liga esta sesión a una conversación real (gap #2 de la
+ * segunda tanda — antes tool_audit_log siempre quedaba con conversation_id
+ * NULL). Se resuelve UNA sola vez acá (no por tool call) y se pasa como
+ * promesa al hook de auditoría. Sin ctx (CLI, sesiones de un solo uso de
+ * proactive.ts) sigue quedando NULL — no hay conversación real que ligar.
+ */
+export function createBrainSession(ctx?: RouteContext): BrainSession {
+  const conversationIdPromise: Promise<number | null> = ctx
+    ? getOrCreateConversation(ctx).catch((err) => {
+        console.error("[session] no pude resolver conversation_id:", err);
+        return null;
+      })
+    : Promise.resolve(null);
+
   const queue: any[] = [];
   // Objetos wrapper (no `let` sueltos) para esquivar el narrowing de TS a
   // través de closures — con un `let` bare, TS termina infiriendo `never` acá.
@@ -67,7 +83,7 @@ export function createBrainSession(): BrainSession {
     }
   }
 
-  const q = query({ prompt: promptGenerator(), options: brainOptions() });
+  const q = query({ prompt: promptGenerator(), options: brainOptions(conversationIdPromise) });
 
   (async () => {
     for await (const msg of q as AsyncGenerator<any>) {

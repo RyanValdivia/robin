@@ -40,8 +40,8 @@ function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
 }
 
-/** Extrae los nombres de [[wikilinks]] del cuerpo de una nota (sin duplicados). */
-function parseWikilinks(body: string): string[] {
+/** Extrae los nombres de [[wikilinks]] del cuerpo de una nota (sin duplicados). Exportada para tests (memory.test.ts). */
+export function parseWikilinks(body: string): string[] {
   const names = new Set<string>();
   for (const m of body.matchAll(/\[\[([^\]|#]+)/g)) names.add(m[1].trim());
   return [...names];
@@ -99,7 +99,7 @@ export type SearchResult = {
 // literal) más un pequeño bonus por cantidad de términos matcheados, para que
 // entre dos exactos desempate el que cubre más de la query. Nunca supera a
 // otro exacto por mucho ni se confunde con el 0..1 de similitud coseno.
-function exactScore(snippet: string, terms: string[]): number {
+export function exactScore(snippet: string, terms: string[]): number {
   const lower = snippet.toLowerCase();
   const hits = terms.filter((t) => lower.includes(t)).length;
   return 1 + hits * 0.01;
@@ -200,7 +200,7 @@ function loadCategoryLabels(): Record<string, string> {
   }
 }
 
-function labelForCategory(category: string): string {
+export function labelForCategory(category: string): string {
   const overrides = loadCategoryLabels();
   return overrides[category] ?? category.charAt(0).toUpperCase() + category.slice(1);
 }

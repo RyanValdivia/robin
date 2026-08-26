@@ -130,6 +130,26 @@ export async function listPendingReminders(userId: number): Promise<
   );
 }
 
+/**
+ * Notificaciones de recordatorios del canal 'web' de los últimos 15 minutos —
+ * las inserta el worker de abajo (payload.channel === 'web'). NO las marca
+ * "consumidas" (a diferencia de una versión anterior que hacía
+ * UPDATE...RETURNING): si el dueño tiene la Web abierta en dos pestañas o
+ * dispositivos a la vez, cada uno hace su propio polling — consumir en el
+ * primer GET que llegara dejaba al resto sin ver la notificación nunca. El
+ * dedupe (no mostrar la misma dos veces) queda del lado del cliente, por id
+ * (ver chat-panel.tsx) — más simple que coordinar "leído" entre pestañas.
+ */
+export async function recentWebNotifications(userId: number): Promise<Array<{ id: number; text: string }>> {
+  const { rows } = await pool.query<{ id: number; text: string }>(
+    `SELECT id, text FROM web_notifications
+     WHERE user_id = $1 AND created_at > now() - interval '15 minutes'
+     ORDER BY id`,
+    [userId],
+  );
+  return rows;
+}
+
 let worker: Worker | null = null;
 
 /** Arranca el worker que procesa recordatorios cuando llega su hora. Llamar una vez por proceso. */
@@ -142,7 +162,17 @@ export function startSchedulerWorker(): Worker {
       const task = rows[0];
       if (!task || task.status !== "pending") return; // cancelado o ya procesado
       const payload = task.payload as ReminderPayload;
-      if (sender) {
+      if (payload.channel === "web") {
+        // Web no tiene un sendMessage() como Telegram (registerOutboundSender
+        // es una función en memoria del proceso que registra el adapter, y
+        // el worker corre en el proceso de Telegram — un "sender" de Web ahí
+        // no tendría a quién llamar). En vez de eso, la fila queda para que
+        // el navegador la levante por polling (ver api/web-notifications).
+        await pool.query(`INSERT INTO web_notifications (user_id, text) VALUES ($1, $2)`, [
+          task.user_id,
+          payload.text,
+        ]);
+      } else if (sender) {
         await sender(payload.channel, payload.externalId, `⏰ ${payload.text}`);
       } else {
         console.error("[scheduler] disparó un recordatorio pero no hay outbound sender registrado");

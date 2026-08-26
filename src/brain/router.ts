@@ -9,8 +9,9 @@ import { chatComplete, cheapLlmAvailable } from "./cheapLLM.ts";
 import { scheduleReminder } from "./scheduler.ts";
 import { logMessage } from "./usage.ts";
 import { logTurn } from "./conversationLog.ts";
+import { classifyHeuristic, GREETING_RE, TIME_RE, CALC_RE, REMINDER_AT_RE, REMINDER_IN_RE, type Category } from "./classifyHeuristic.ts";
 
-export type Category = "direct" | "knowledge" | "agent";
+export type { Category };
 
 // Zona horaria fija del usuario (Lima, UTC-5 sin DST) — todo lo que muestra/calcula
 // hora local acá usa esto, no la del servidor (VPS corre en UTC).
@@ -33,45 +34,6 @@ function limaNowParts(): { year: number; month: number; day: number; hour: numbe
 
 /** Contexto del canal que llama — lo necesita el recordatorio DIRECT (V5) para saber a quién avisar. */
 export type RouteContext = { userId: number; channel: string; externalId: string };
-
-const GREETING_RE = /^(hola|holi|buenas|hey|buen[oa]s?\s*(d[ií]as?|tardes|noches))[\s!.,]*$/i;
-const TIME_RE = /\bqu[eé]\s*(hora|d[ií]a|fecha)\s*(es|era|tenemos)?\b/i;
-const CALC_RE = /^[\s\d+\-*/().]+$/;
-
-// "Recordame comprar leche a las 8" / "recordame en 20 minutos estirar". Solo el
-// patrón simple y sin ambigüedad — cualquier otra forma cae a AGENT (Claude calcula
-// la fecha/hora con la tool schedule_task, ver brain/tools.ts).
-const REMINDER_VERB = /recordame|recu[eé]rdame|agendame/i;
-const REMINDER_AT_RE =
-  /^(?:recordame|recu[eé]rdame|agendame)\s+(.+?)\s+(mañana\s+)?a\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\.?$/i;
-const REMINDER_IN_RE =
-  /^(?:recordame|recu[eé]rdame|agendame)\s+(.+?)\s+en\s+(\d+)\s*(minutos?|min|horas?|hs?)\.?$/i;
-
-const AGENT_RE =
-  /\b(github|pull request|\bpr\b|repos?(itorios?)?|bash|comando|terminal|servidor|deploy|despleg|docker|browser|navegador|p[aá]gina web|internet|busca(r|me)?\s+en\s+(la\s+)?(web|internet)|screenshot|captura)\b/i;
-
-const KNOWLEDGE_RE =
-  /\b(record[aá]s|te acord[aá]s|qu[eé] sab[eé]s|qui[eé]n soy|mis?\s+proyectos?|mi\s+informaci[oó]n|seg[uú]n\s+(mi|tu)\s+memoria|qu[eé]\s+notas?\s+ten[eé]s)\b/i;
-
-// Preguntas sobre el propio asistente (identidad/capacidades) — NO son knowledge
-// (eso es memoria del USUARIO, no del bot). Robin solo puede presentarse bien vía
-// AGENT (Claude), que tiene la persona real en el system prompt; KNOWLEDGE buscaría
-// en el vault, no encontraría nada, y respondería "no tengo información".
-const IDENTITY_RE =
-  /\b(qu[eé]\s+(eres|sos)|qui[eé]n\s+(eres|sos)|c[oó]mo\s+te\s+llam[aá]s|qu[eé]\s+(puedes|pod[eé]s)\s+hacer|qu[eé]\s+sabe[sé]\s+hacer|para\s+qu[eé]\s+sirv[eé]s)\b/i;
-
-function classifyHeuristic(text: string): Category | null {
-  const t = text.trim();
-  if (REMINDER_AT_RE.test(t) || REMINDER_IN_RE.test(t)) return "direct";
-  if (REMINDER_VERB.test(t)) return "agent"; // recordatorio con fecha/hora no trivial -> Claude la calcula
-  if (GREETING_RE.test(t)) return "direct";
-  if (TIME_RE.test(t)) return "direct";
-  if (CALC_RE.test(t) && /\d/.test(t)) return "direct";
-  if (IDENTITY_RE.test(t)) return "agent";
-  if (AGENT_RE.test(t)) return "agent";
-  if (KNOWLEDGE_RE.test(t)) return "knowledge";
-  return null;
-}
 
 async function classifyWithCheapLlm(text: string): Promise<Category> {
   try {

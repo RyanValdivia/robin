@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Pencil, Trash2, Save, X } from "lucide-react";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type Note = { path: string; type: string; name: string; description: string };
 type Mode = "view" | "edit" | "create";
+type EditorTab = "write" | "preview";
 
 const TYPES = ["user", "project", "infrastructure", "reference"] as const;
 
@@ -23,6 +24,14 @@ export function MemoryPanel() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [editorTab, setEditorTab] = useState<EditorTab>("write");
+  // Autocomplete de [[wikilinks]]: linkQuery !== null mientras el cursor está
+  // dentro de un "[[algo" sin cerrar — se recalcula en cada tecla (onSelect
+  // cubre click/flechas, no solo tipeo). No sigue el caret en píxeles (la
+  // lista queda pegada bajo el textarea, no flotando exacto en el cursor) —
+  // simplificación a propósito, mismo espíritu minimalista del resto.
+  const [linkQuery, setLinkQuery] = useState<string | null>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   function loadNotes() {
     fetch("/api/memory")
@@ -63,6 +72,8 @@ export function MemoryPanel() {
     setSelected(null);
     setForm(emptyForm);
     setError("");
+    setEditorTab("write");
+    setLinkQuery(null);
     setMode("create");
   }
 
@@ -70,7 +81,50 @@ export function MemoryPanel() {
     if (!selected) return;
     setForm({ relative_path: selected.path, type: selected.type || "user", name: selected.name, description: selected.description, content: rawContent });
     setError("");
+    setEditorTab("write");
+    setLinkQuery(null);
     setMode("edit");
+  }
+
+  // Detecta si el cursor quedó dentro de un "[[algo" sin cerrar, para mostrar
+  // sugerencias de notas existentes (gap #8 — antes no había autocomplete).
+  function checkLinkQuery(value: string, cursor: number) {
+    const before = value.slice(0, cursor);
+    const m = /\[\[([^\]]*)$/.exec(before);
+    setLinkQuery(m ? m[1] : null);
+  }
+
+  function onContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setForm((f) => ({ ...f, content: value }));
+    checkLinkQuery(value, e.target.selectionStart ?? value.length);
+  }
+
+  const linkSuggestions = useMemo(() => {
+    if (linkQuery === null) return [];
+    const q = linkQuery.toLowerCase();
+    return notes.filter((n) => (n.name || n.path).toLowerCase().includes(q)).slice(0, 6);
+  }, [linkQuery, notes]);
+
+  function insertLink(note: Note) {
+    const el = contentRef.current;
+    if (!el) return;
+    const value = form.content;
+    const cursor = el.selectionStart ?? value.length;
+    const before = value.slice(0, cursor);
+    const m = /\[\[([^\]]*)$/.exec(before);
+    if (!m) return;
+    const start = before.length - m[0].length;
+    const name = note.name || note.path.replace(/\.md$/, "").split("/").pop() || note.path;
+    const insertText = `[[${name}]]`;
+    const newValue = value.slice(0, start) + insertText + value.slice(cursor);
+    setForm((f) => ({ ...f, content: newValue }));
+    setLinkQuery(null);
+    requestAnimationFrame(() => {
+      const pos = start + insertText.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
   }
 
   async function save() {
@@ -219,15 +273,60 @@ export function MemoryPanel() {
               <Input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-wide text-muted">Contenido (markdown)</span>
-              <Textarea
-                value={form.content}
-                onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                rows={14}
-                className="rounded-lg border border-border bg-panel p-3 font-mono text-[13px] leading-relaxed"
-              />
-            </label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wide text-muted">Contenido (markdown)</span>
+                <div className="flex gap-1">
+                  {(["write", "preview"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEditorTab(t)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-[11px] transition-colors",
+                        editorTab === t ? "bg-panel2 text-white" : "text-muted hover:text-gray-200",
+                      )}
+                    >
+                      {t === "write" ? "Editar" : "Preview"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {editorTab === "preview" ? (
+                <div
+                  className="prose-note text-[14.5px] text-gray-300 rounded-lg border border-border bg-panel p-3 min-h-[280px]"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(form.content || "*(vacío)*") }}
+                />
+              ) : (
+                <div className="relative">
+                  <Textarea
+                    ref={contentRef}
+                    value={form.content}
+                    onChange={onContentChange}
+                    onSelect={(e) => checkLinkQuery(form.content, e.currentTarget.selectionStart ?? 0)}
+                    onBlur={() => setLinkQuery(null)}
+                    rows={14}
+                    className="rounded-lg border border-border bg-panel p-3 font-mono text-[13px] leading-relaxed"
+                  />
+                  {linkQuery !== null && linkSuggestions.length > 0 && (
+                    <div className="absolute left-2 right-2 top-full mt-1 z-10 bg-panel2 border border-border rounded-lg shadow-lg overflow-hidden">
+                      {linkSuggestions.map((n) => (
+                        <button
+                          key={n.path}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()} // evita el blur del textarea antes del click
+                          onClick={() => insertLink(n)}
+                          className="block w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-panel3"
+                        >
+                          {n.name || n.path}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-2 mt-1">
               <Button onClick={save} disabled={saving} className="gap-1.5">

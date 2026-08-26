@@ -34,21 +34,32 @@ export const bashGuardHook: HookCallback = async (input) => {
 // memory/projects/robin.md) — tool_audit_log estaba en el schema desde V1
 // sin código que escribiera ahí. Fire-and-forget (mismo criterio que
 // usage.ts): un fallo acá nunca rompe una respuesta real. Sin matcher ->
-// corre para cualquier tool (Bash/Read/Grep/Glob/MCP). No liga a una
-// conversación puntual (conversation_id queda NULL) — BrainSession no tiene
-// noción de ctx/conversation al crearse, ver conversationLog.ts para eso.
-export const toolAuditHook: HookCallback = async (input) => {
-  if (input.hook_event_name !== "PostToolUse") return {};
-  const { tool_name, tool_input, tool_response } = input;
-  pool
-    .query(`INSERT INTO tool_audit_log (tool_name, input, output) VALUES ($1, $2, $3)`, [
-      tool_name,
-      JSON.stringify(tool_input ?? null),
-      JSON.stringify(tool_response ?? null),
-    ])
-    .catch((err) => console.error("[tool_audit] no pude loguear tool call:", err));
-  return {};
-};
+// corre para cualquier tool (Bash/Read/Grep/Glob/MCP).
+//
+// Factory en vez de hook fijo: al principio quedaba sin ligar a una
+// conversación puntual (conversation_id siempre NULL) porque BrainSession no
+// tenía noción de ctx al crearse. Ahora session.ts resuelve el
+// conversation_id UNA vez por sesión (getOrCreateConversation) y lo pasa acá
+// como promesa — el hook la espera en cada tool call (ya está resuelta para
+// cualquier call que no sea la primerísima del turno inicial). Sin ctx (CLI,
+// sesiones de un solo uso de proactive.ts) la promesa resuelve a null, mismo
+// comportamiento que antes.
+export function makeToolAuditHook(conversationIdPromise: Promise<number | null>): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== "PostToolUse") return {};
+    const { tool_name, tool_input, tool_response } = input;
+    const conversationId = await conversationIdPromise.catch(() => null);
+    pool
+      .query(`INSERT INTO tool_audit_log (conversation_id, tool_name, input, output) VALUES ($1, $2, $3, $4)`, [
+        conversationId,
+        tool_name,
+        JSON.stringify(tool_input ?? null),
+        JSON.stringify(tool_response ?? null),
+      ])
+      .catch((err) => console.error("[tool_audit] no pude loguear tool call:", err));
+    return {};
+  };
+}
 
 // Gap #7 del análisis de memoria: "sesión larga sin gestión de contexto
 // visible". El Agent SDK YA compacta el contexto solo cuando se acerca al
