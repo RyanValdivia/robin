@@ -21,9 +21,25 @@ type AgendaBlock = {
 const DOW_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const DOW_FULL = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
-const GRID_START_MIN = 6 * 60; // 06:00
-const GRID_END_MIN = 23 * 60; // 23:00
+const DEFAULT_START_HOUR = 6;
+const DEFAULT_END_HOUR = 23;
 const HOUR_PX = 44;
+
+// Antes la grilla era fija 6-23 y cualquier bloque fuera de ese rango quedaba
+// cortado/oculto ("no lo veo completo") — ahora se expande (con 1h de
+// margen) para que TODO bloque recurrente entre.
+function computeHourBounds(blocks: AgendaBlock[]): [number, number] {
+  let start = DEFAULT_START_HOUR;
+  let end = DEFAULT_END_HOUR;
+  for (const b of blocks) {
+    if (b.day_of_week === null) continue;
+    const s = Math.floor(toMinutes(b.start_time) / 60) - 1;
+    const e = Math.ceil(toMinutes(b.end_time) / 60) + 1;
+    if (s < start) start = s;
+    if (e > end) end = e;
+  }
+  return [Math.max(0, start), Math.min(24, end)];
+}
 
 function hhmm(t: string): string {
   return t.slice(0, 5); // "08:00:00" -> "08:00", tolera "08:00" también
@@ -145,8 +161,9 @@ export function AgendaPanel({ active }: { active: boolean }) {
   }, [blocks]);
 
   const today = limaDayOfWeek();
-  const gridHeight = ((GRID_END_MIN - GRID_START_MIN) / 60) * HOUR_PX;
-  const hourMarks = Array.from({ length: GRID_END_MIN / 60 - GRID_START_MIN / 60 + 1 }, (_, i) => GRID_START_MIN / 60 + i);
+  const [startHour, endHour] = useMemo(() => computeHourBounds(blocks ?? []), [blocks]);
+  const gridHeight = (endHour - startHour) * HOUR_PX;
+  const hourMarks = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
 
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-6">
@@ -229,71 +246,74 @@ export function AgendaPanel({ active }: { active: boolean }) {
         )}
 
         {blocks !== null && blocks.length > 0 && (
-          <div className="overflow-x-auto mb-6">
-            <div className="min-w-[640px]">
-              {/* Header de días */}
-              <div className="flex border-b border-border/80">
-                <div className="w-12 shrink-0" />
-                {DOW_SHORT.map((d, i) => (
+          // Antes: header y grilla eran dos <div className="flex"> separados
+          // (podían desalinearse) sin tope de alto (la página entera scrolleaba
+          // un bloque fijo de ~750px). Ahora es UNA sola CSS grid (columnas
+          // garantizadas iguales entre el header y el cuerpo) metida en su
+          // propio contenedor con scroll (vertical Y horizontal), con el
+          // header y el gutter de horas sticky para no perder la referencia.
+          <div className="rounded-xl border border-border/60 overflow-auto mb-6 max-h-[65vh]">
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: `44px repeat(7, minmax(88px, 1fr))`, minWidth: 44 + 88 * 7 }}
+            >
+              <div className="sticky top-0 left-0 z-30 bg-panel border-b border-r border-border/60" />
+              {DOW_SHORT.map((d, i) => (
+                <div
+                  key={`h-${i}`}
+                  className={cn(
+                    "sticky top-0 z-20 bg-panel text-center text-xs font-medium py-2 border-b border-border/60",
+                    i === today ? "text-accent" : "text-muted",
+                  )}
+                >
+                  {d}
+                </div>
+              ))}
+
+              <div className="sticky left-0 z-20 bg-panel border-r border-border/60 relative" style={{ height: gridHeight }}>
+                {hourMarks.map((h) => (
                   <div
-                    key={i}
-                    className={cn(
-                      "flex-1 text-center text-xs font-medium py-1.5",
-                      i === today ? "text-accent" : "text-muted",
-                    )}
+                    key={h}
+                    className="absolute right-1.5 -translate-y-1/2 text-[10px] text-muted tabular-nums"
+                    style={{ top: (h - startHour) * HOUR_PX }}
                   >
-                    {d}
+                    {String(h).padStart(2, "0")}:00
                   </div>
                 ))}
               </div>
-
-              {/* Grilla: gutter de horas + 7 columnas relativas para posicionar bloques */}
-              <div className="flex">
-                <div className="w-12 shrink-0 relative" style={{ height: gridHeight }}>
-                  {hourMarks.map((h) => (
+              {DOW_SHORT.map((_, dayIdx) => (
+                <div
+                  key={dayIdx}
+                  className={cn("relative border-r border-border/30 last:border-r-0", dayIdx === today && "bg-accent/[0.04]")}
+                  style={{ height: gridHeight }}
+                >
+                  {hourMarks.slice(0, -1).map((h) => (
                     <div
                       key={h}
-                      className="absolute right-1.5 -translate-y-1/2 text-[10px] text-muted tabular-nums"
-                      style={{ top: (h * 60 - GRID_START_MIN) * (HOUR_PX / 60) }}
-                    >
-                      {String(h).padStart(2, "0")}:00
-                    </div>
+                      className="absolute w-full border-t border-border/30"
+                      style={{ top: (h - startHour) * HOUR_PX }}
+                    />
                   ))}
+                  {(recurringByDay.get(dayIdx) ?? []).map((b) => {
+                    const top = Math.max(0, toMinutes(b.start_time) - startHour * 60) * (HOUR_PX / 60);
+                    const height = Math.max(20, (toMinutes(b.end_time) - toMinutes(b.start_time)) * (HOUR_PX / 60));
+                    return (
+                      <button
+                        key={b.id}
+                        onClick={() => remove(b.id)}
+                        title={`${hhmm(b.start_time)}-${hhmm(b.end_time)} · click para borrar`}
+                        className="absolute left-0.5 right-0.5 rounded-md bg-accent/15 border border-accent/40 px-1.5 py-0.5 text-left overflow-hidden hover:bg-accent/25 transition-colors"
+                        style={{ top, height }}
+                      >
+                        <div className="text-[10px] font-medium text-accent leading-tight truncate">{b.label}</div>
+                        <div className="text-[9px] text-accent/70 leading-tight truncate">
+                          {hhmm(b.start_time)}-{hhmm(b.end_time)}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                {DOW_SHORT.map((_, dayIdx) => (
-                  <div
-                    key={dayIdx}
-                    className={cn("flex-1 relative border-l border-border/50", dayIdx === today && "bg-accent/[0.04]")}
-                    style={{ height: gridHeight }}
-                  >
-                    {hourMarks.slice(0, -1).map((h) => (
-                      <div
-                        key={h}
-                        className="absolute w-full border-t border-border/30"
-                        style={{ top: (h * 60 - GRID_START_MIN) * (HOUR_PX / 60) }}
-                      />
-                    ))}
-                    {(recurringByDay.get(dayIdx) ?? []).map((b) => {
-                      const top = Math.max(0, toMinutes(b.start_time) - GRID_START_MIN) * (HOUR_PX / 60);
-                      const height = Math.max(18, (toMinutes(b.end_time) - toMinutes(b.start_time)) * (HOUR_PX / 60));
-                      return (
-                        <button
-                          key={b.id}
-                          onClick={() => remove(b.id)}
-                          title={`${hhmm(b.start_time)}-${hhmm(b.end_time)} · click para borrar`}
-                          className="absolute left-0.5 right-0.5 rounded-md bg-accent/15 border border-accent/40 px-1.5 py-0.5 text-left overflow-hidden hover:bg-accent/25 transition-colors"
-                          style={{ top, height }}
-                        >
-                          <div className="text-[10px] font-medium text-accent leading-tight truncate">{b.label}</div>
-                          <div className="text-[9px] text-accent/70 leading-tight truncate">
-                            {hhmm(b.start_time)}-{hhmm(b.end_time)}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         )}
