@@ -9,14 +9,6 @@ type Reminder = { id: number; text: string; run_at: string; cron_expr?: string |
 
 const DOW = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("es-PE", { timeZone: "America/Lima" });
-  } catch {
-    return iso;
-  }
-}
-
 // Mismos componentes de fecha en hora Lima que brain/router.ts (America/Lima,
 // UTC-5 fijo) — para agrupar "Hoy"/"Mañana" sin depender de la zona del
 // navegador (el VPS/servidor sí corre en UTC, pero acá corre en el cliente).
@@ -47,6 +39,14 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+function timeLabel(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
 }
 
 function dayLabel(iso: string): string {
@@ -220,8 +220,9 @@ export function RemindersPanel() {
   }
 
   const { recurring, byDay } = useMemo(() => {
-    const recurring = reminders.filter((r) => r.cron_expr);
-    const once = reminders.filter((r) => !r.cron_expr);
+    const byTime = (a: Reminder, b: Reminder) => +new Date(a.run_at) - +new Date(b.run_at);
+    const recurring = reminders.filter((r) => r.cron_expr).sort(byTime);
+    const once = reminders.filter((r) => !r.cron_expr).sort(byTime);
     const byDay = new Map<string, Reminder[]>();
     for (const r of once) {
       const label = dayLabel(r.run_at);
@@ -290,7 +291,7 @@ export function RemindersPanel() {
             <div className="text-[11px] uppercase tracking-wide text-muted mb-1.5 px-1">Recurrentes</div>
             <div className="flex flex-col gap-2.5">
               {recurring.map((r) => (
-                <ReminderRow key={r.id} r={r} onCancel={cancel} />
+                <ReminderRow key={r.id} r={r} onCancel={cancel} mode="recurring" />
               ))}
             </div>
           </div>
@@ -301,7 +302,7 @@ export function RemindersPanel() {
             <div className="text-[11px] uppercase tracking-wide text-muted mb-1.5 px-1">{label}</div>
             <div className="flex flex-col gap-2.5">
               {items.map((r) => (
-                <ReminderRow key={r.id} r={r} onCancel={cancel} />
+                <ReminderRow key={r.id} r={r} onCancel={cancel} mode="day" />
               ))}
             </div>
           </div>
@@ -331,17 +332,24 @@ export function RemindersPanel() {
   );
 }
 
-function ReminderRow({ r, onCancel }: { r: Reminder; onCancel: (id: number) => void }) {
+function ReminderRow({ r, onCancel, mode }: { r: Reminder; onCancel: (id: number) => void; mode: "day" | "recurring" }) {
+  // "day": el header del grupo ya dice el día → la fila solo necesita la hora.
+  // "recurring": no hay grupo por día → mostrar próximo run relativo (día + hora).
+  const subtitle =
+    mode === "day"
+      ? timeLabel(r.run_at)
+      : `${cronLabel(r.cron_expr!)} · próximo ${dayLabel(r.run_at)} ${timeLabel(r.run_at)}`;
   return (
     <div className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3">
-      <div className="min-w-0">
+      {mode === "day" && (
+        <div className="text-sm font-semibold text-gray-100 tabular-nums shrink-0 w-14">{timeLabel(r.run_at)}</div>
+      )}
+      <div className="min-w-0 flex-1">
         <div className="text-sm text-gray-200 truncate">
           {r.cron_expr && <span title={`cron: ${r.cron_expr}`}>🔁 </span>}
           {r.text}
         </div>
-        <div className="text-xs text-muted">
-          {r.cron_expr ? `${cronLabel(r.cron_expr)} · próximo ${formatDate(r.run_at)}` : formatDate(r.run_at)}
-        </div>
+        {mode === "recurring" && <div className="text-xs text-muted">{subtitle}</div>}
       </div>
       <Button variant="destructive" size="sm" onClick={() => onCancel(r.id)} className="shrink-0">
         Cancelar
