@@ -57,12 +57,17 @@ export async function getConversationHistory(
   limit = 200,
 ): Promise<Array<{ role: "user" | "assistant"; text: string; created_at: string }>> {
   const conversationId = await getOrCreateConversation(ctx);
+  // logTurn() inserta user+assistant del mismo turno en un solo INSERT ->
+  // mismo now(), mismo created_at (Postgres evalúa now() una vez por
+  // statement) — sin `id` de desempate, el orden entre esos dos queda
+  // indefinido (a veces salía el assistant ANTES que el user que lo generó).
+  // `id` sí es secuencial en orden de inserción (SERIAL), por eso desempata bien.
   const { rows } = await pool.query(
     `SELECT role, content->>'text' AS text, created_at FROM (
-       SELECT role, content, created_at FROM messages
+       SELECT role, content, created_at, id FROM messages
        WHERE conversation_id = $1 AND role IN ('user', 'assistant')
-       ORDER BY created_at DESC LIMIT $2
-     ) recientes ORDER BY created_at ASC`,
+       ORDER BY created_at DESC, id DESC LIMIT $2
+     ) recientes ORDER BY created_at ASC, id ASC`,
     [conversationId, limit],
   );
   return rows;
