@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RotateCw, Plus, X, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,46 @@ const DOW_FULL = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes
 const DEFAULT_START_HOUR = 6;
 const DEFAULT_END_HOUR = 23;
 const HOUR_PX = 44;
+
+// Paleta categórica validada (skill de dataviz) — orden fijo, no ciclado, hex
+// de modo oscuro. Cada etiqueta distinta de bloque se queda con el próximo
+// slot libre, en orden de aparición — misma "Clase de cálculo" siempre el
+// mismo color, aunque se repita varios días. Después del slot 8, cae a un
+// gris neutro (no vuelve a ciclar) — igual queda identificado por el texto
+// del label, nunca depende solo del color (ver skill).
+const CATEGORY_COLORS = [
+  "#3987e5", // blue
+  "#d95926", // orange
+  "#199e70", // aqua
+  "#c98500", // yellow
+  "#d55181", // magenta
+  "#008300", // green
+  "#9085e9", // violet
+  "#e66767", // red
+];
+const OTHER_COLOR = "#8b8a86"; // gris neutro, slot 9+
+
+function colorsByLabel(blocks: AgendaBlock[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const b of blocks) {
+    if (!map.has(b.label)) {
+      map.set(b.label, map.size < CATEGORY_COLORS.length ? CATEGORY_COLORS[map.size] : OTHER_COLOR);
+    }
+  }
+  return map;
+}
+
+function limaNowMinutes(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Lima",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return h * 60 + m;
+}
 
 // Antes la grilla era fija 6-23 y cualquier bloque fuera de ese rango quedaba
 // cortado/oculto ("no lo veo completo") — ahora se expande (con 1h de
@@ -146,7 +187,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
     }
   }
 
-  const { recurringByDay, upcoming } = useMemo(() => {
+  const { recurringByDay, upcoming, labelColors } = useMemo(() => {
     const all = blocks ?? [];
     const recurringByDay = new Map<number, AgendaBlock[]>();
     for (const b of all) {
@@ -157,13 +198,25 @@ export function AgendaPanel({ active }: { active: boolean }) {
     const upcoming = all
       .filter((b) => b.date !== null)
       .sort((a, b) => a.date!.localeCompare(b.date!) || a.start_time.localeCompare(b.start_time));
-    return { recurringByDay, upcoming };
+    return { recurringByDay, upcoming, labelColors: colorsByLabel(all) };
   }, [blocks]);
 
   const today = limaDayOfWeek();
   const [startHour, endHour] = useMemo(() => computeHourBounds(blocks ?? []), [blocks]);
   const gridHeight = (endHour - startHour) * HOUR_PX;
   const hourMarks = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
+
+  // Línea de "ahora" en la columna de hoy — tick cada minuto mientras la tab
+  // está activa, nada más (no vale la pena más seguido para una línea de 1px).
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [active]);
+  const nowMinutes = limaNowMinutes();
+  const nowTop = (nowMinutes - startHour * 60) * (HOUR_PX / 60);
+  const showNowLine = nowMinutes >= startHour * 60 && nowMinutes <= endHour * 60;
 
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-6">
@@ -252,29 +305,30 @@ export function AgendaPanel({ active }: { active: boolean }) {
           // garantizadas iguales entre el header y el cuerpo) metida en su
           // propio contenedor con scroll (vertical Y horizontal), con el
           // header y el gutter de horas sticky para no perder la referencia.
-          <div className="rounded-xl border border-border/60 overflow-auto mb-6 max-h-[65vh]">
+          <Card className="overflow-auto mb-6 max-h-[65vh] p-0">
             <div
               className="grid"
-              style={{ gridTemplateColumns: `44px repeat(7, minmax(88px, 1fr))`, minWidth: 44 + 88 * 7 }}
+              style={{ gridTemplateColumns: `44px repeat(7, minmax(92px, 1fr))`, minWidth: 44 + 92 * 7 }}
             >
-              <div className="sticky top-0 left-0 z-30 bg-panel border-b border-r border-border/60" />
+              <div className="sticky top-0 left-0 z-30 bg-panel border-b border-r border-border" />
               {DOW_SHORT.map((d, i) => (
                 <div
                   key={`h-${i}`}
                   className={cn(
-                    "sticky top-0 z-20 bg-panel text-center text-xs font-medium py-2 border-b border-border/60",
+                    "sticky top-0 z-20 bg-panel flex flex-col items-center gap-0.5 py-2 border-b border-border",
                     i === today ? "text-accent" : "text-muted",
                   )}
                 >
-                  {d}
+                  <span className="text-[11px] font-medium tracking-wide">{d}</span>
+                  {i === today && <span className="w-1 h-1 rounded-full bg-accent" />}
                 </div>
               ))}
 
-              <div className="sticky left-0 z-20 bg-panel border-r border-border/60 relative" style={{ height: gridHeight }}>
+              <div className="sticky left-0 z-20 bg-panel border-r border-border relative" style={{ height: gridHeight }}>
                 {hourMarks.map((h) => (
                   <div
                     key={h}
-                    className="absolute right-1.5 -translate-y-1/2 text-[10px] text-muted tabular-nums"
+                    className="absolute right-2 -translate-y-1/2 text-[10px] text-muted tabular-nums"
                     style={{ top: (h - startHour) * HOUR_PX }}
                   >
                     {String(h).padStart(2, "0")}:00
@@ -284,29 +338,38 @@ export function AgendaPanel({ active }: { active: boolean }) {
               {DOW_SHORT.map((_, dayIdx) => (
                 <div
                   key={dayIdx}
-                  className={cn("relative border-r border-border/30 last:border-r-0", dayIdx === today && "bg-accent/[0.04]")}
+                  className={cn("relative border-r border-border/60 last:border-r-0", dayIdx === today && "bg-accent/[0.05]")}
                   style={{ height: gridHeight }}
                 >
                   {hourMarks.slice(0, -1).map((h) => (
                     <div
                       key={h}
-                      className="absolute w-full border-t border-border/30"
+                      className="absolute w-full border-t border-border/40"
                       style={{ top: (h - startHour) * HOUR_PX }}
                     />
                   ))}
+                  {dayIdx === today && showNowLine && (
+                    <div className="absolute w-full z-10 pointer-events-none" style={{ top: nowTop }}>
+                      <div className="absolute -left-[3px] -top-[3px] w-[7px] h-[7px] rounded-full bg-red-400" />
+                      <div className="border-t border-red-400" />
+                    </div>
+                  )}
                   {(recurringByDay.get(dayIdx) ?? []).map((b) => {
                     const top = Math.max(0, toMinutes(b.start_time) - startHour * 60) * (HOUR_PX / 60);
-                    const height = Math.max(20, (toMinutes(b.end_time) - toMinutes(b.start_time)) * (HOUR_PX / 60));
+                    const height = Math.max(22, (toMinutes(b.end_time) - toMinutes(b.start_time)) * (HOUR_PX / 60));
+                    const color = labelColors.get(b.label)!;
                     return (
                       <button
                         key={b.id}
                         onClick={() => remove(b.id)}
-                        title={`${hhmm(b.start_time)}-${hhmm(b.end_time)} · click para borrar`}
-                        className="absolute left-0.5 right-0.5 rounded-md bg-accent/15 border border-accent/40 px-1.5 py-0.5 text-left overflow-hidden hover:bg-accent/25 transition-colors"
-                        style={{ top, height }}
+                        title={`${b.label} · ${hhmm(b.start_time)}-${hhmm(b.end_time)} · click para borrar`}
+                        className="absolute left-0.5 right-0.5 rounded-md border-l-[3px] px-1.5 py-1 text-left overflow-hidden shadow-sm transition-all hover:brightness-125 hover:shadow-md"
+                        style={{ top, height, background: `${color}26`, borderColor: color }}
                       >
-                        <div className="text-[10px] font-medium text-accent leading-tight truncate">{b.label}</div>
-                        <div className="text-[9px] text-accent/70 leading-tight truncate">
+                        <div className="text-[10px] font-semibold leading-tight truncate" style={{ color }}>
+                          {b.label}
+                        </div>
+                        <div className="text-[9px] text-gray-300/80 leading-tight truncate tabular-nums">
                           {hhmm(b.start_time)}-{hhmm(b.end_time)}
                         </div>
                       </button>
@@ -315,7 +378,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
         {upcoming.length > 0 && (
@@ -325,8 +388,12 @@ export function AgendaPanel({ active }: { active: boolean }) {
               {upcoming.map((b) => (
                 <div
                   key={b.id}
-                  className="flex items-center justify-between gap-3 bg-panel border border-border rounded-xl px-4 py-3"
+                  className="flex items-center gap-3 bg-panel border border-border rounded-xl px-4 py-3 transition-colors hover:border-panel3"
                 >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: labelColors.get(b.label) }}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-gray-200 truncate">{b.label}</div>
                     <div className="text-xs text-muted">
