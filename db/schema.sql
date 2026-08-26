@@ -171,3 +171,23 @@ ALTER TABLE agenda_blocks ADD COLUMN IF NOT EXISTS teacher TEXT;
 ALTER TABLE agenda_blocks ADD COLUMN IF NOT EXISTS description TEXT;
 
 CREATE INDEX IF NOT EXISTS agenda_blocks_user_idx ON agenda_blocks (user_id);
+
+-- Curso/evento con nombre — mismo texto de label (sin importar mayúsculas)
+-- SIEMPRE resuelve al mismo curso (get-or-create, ver brain/agenda.ts), así
+-- una clase recurrente y un examen puntual del mismo curso quedan
+-- relacionados solos, comparten color (asignado en orden fijo al crear —
+-- misma paleta validada que usa la Web, ver agenda-panel.tsx) y el docente
+-- no hay que repetirlo en cada bloque.
+CREATE TABLE IF NOT EXISTS agenda_courses (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  name        TEXT NOT NULL,
+  teacher     TEXT,
+  color       TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS agenda_courses_user_name_idx ON agenda_courses (user_id, lower(name));
+
+ALTER TABLE agenda_blocks ADD COLUMN IF NOT EXISTS course_id INTEGER REFERENCES agenda_courses(id);
+CREATE INDEX IF NOT EXISTS agenda_blocks_course_idx ON agenda_blocks (course_id);

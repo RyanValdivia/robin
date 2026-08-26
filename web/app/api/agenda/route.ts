@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOwnerUserId } from "@brain/auth.ts";
-import { addAgendaBlock, listAgendaBlocks } from "@brain/agenda.ts";
+import { addAgendaBlock, listAgendaBlocks, listCourses } from "@brain/agenda.ts";
 
 export const runtime = "nodejs";
 
+// `courses` acompaña a `blocks` para que el form de la Web pueda autocompletar
+// el label (mismo curso -> mismo color, ver agenda.ts) sin otro round-trip.
 export async function GET() {
   try {
     const userId = await getOwnerUserId();
-    if (!userId) return NextResponse.json({ blocks: [] });
-    return NextResponse.json({ blocks: await listAgendaBlocks(userId) });
+    if (!userId) return NextResponse.json({ blocks: [], courses: [] });
+    const [blocks, courses] = await Promise.all([listAgendaBlocks(userId), listCourses(userId)]);
+    return NextResponse.json({ blocks, courses });
   } catch (err) {
     console.error("[web] error listando agenda:", err);
     return NextResponse.json({ error: "no pude leer la agenda" }, { status: 500 });

@@ -18,7 +18,11 @@ type AgendaBlock = {
   end_time: string;
   teacher: string | null;
   description: string | null;
+  course_id: number | null;
+  color: string | null;
 };
+
+type AgendaCourse = { id: number; name: string; teacher: string | null; color: string };
 
 // Mismo orden que DOW_NAMES en tools.ts y el DOW de reminders-panel.tsx
 // (0=domingo) — consistente en toda la app, no reindexado acá.
@@ -29,33 +33,11 @@ const DEFAULT_START_HOUR = 6;
 const DEFAULT_END_HOUR = 23;
 const HOUR_PX = 44;
 
-// Paleta categórica validada (skill de dataviz) — orden fijo, no ciclado, hex
-// de modo oscuro. Cada etiqueta distinta de bloque se queda con el próximo
-// slot libre, en orden de aparición — misma "Clase de cálculo" siempre el
-// mismo color, aunque se repita varios días. Después del slot 8, cae a un
-// gris neutro (no vuelve a ciclar) — igual queda identificado por el texto
-// del label, nunca depende solo del color (ver skill).
-const CATEGORY_COLORS = [
-  "#3987e5", // blue
-  "#d95926", // orange
-  "#199e70", // aqua
-  "#c98500", // yellow
-  "#d55181", // magenta
-  "#008300", // green
-  "#9085e9", // violet
-  "#e66767", // red
-];
-const OTHER_COLOR = "#8b8a86"; // gris neutro, slot 9+
-
-function colorsByLabel(blocks: AgendaBlock[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const b of blocks) {
-    if (!map.has(b.label)) {
-      map.set(b.label, map.size < CATEGORY_COLORS.length ? CATEGORY_COLORS[map.size] : OTHER_COLOR);
-    }
-  }
-  return map;
-}
+// Fallback para filas viejas sin curso vinculado (creadas antes de que
+// agenda_courses existiera) — el color real ahora lo asigna el server al
+// crear el curso (get-or-create por nombre, ver brain/agenda.ts), en orden
+// fijo, no ciclado — misma paleta validada (skill de dataviz).
+const FALLBACK_COLOR = "#8b8a86";
 
 function limaNowMinutes(): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -114,6 +96,7 @@ function dateLabel(iso: string): string {
 
 export function AgendaPanel({ active }: { active: boolean }) {
   const [blocks, setBlocks] = useState<AgendaBlock[] | null>(null);
+  const [courses, setCourses] = useState<AgendaCourse[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [label, setLabel] = useState("");
   const [freq, setFreq] = useState<"recurring" | "once">("recurring");
@@ -135,10 +118,21 @@ export function AgendaPanel({ active }: { active: boolean }) {
       const res = await fetch("/api/agenda");
       const data = await res.json();
       setBlocks(data.blocks || []);
+      setCourses(data.courses || []);
     } catch {
       // silencioso — la UI queda con lo último cargado
     }
   }
+
+  // Mismo label (sin importar mayúsculas) = mismo curso del lado del server
+  // (get-or-create, ver agenda.ts) — acá solo es una ayuda visual: si lo que
+  // estás tipeando ya existe, mostrar con qué color/docente va a quedar,
+  // ANTES de guardar. No autocompleta el campo de docente si vos ya
+  // escribiste algo (no pisa lo que estás tipeando).
+  const matchingCourse = useMemo(
+    () => courses.find((c) => c.name.toLowerCase() === label.trim().toLowerCase()),
+    [courses, label],
+  );
 
   useEffect(() => {
     if (active) load();
@@ -201,7 +195,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
     }
   }
 
-  const { recurringByDay, upcoming, labelColors } = useMemo(() => {
+  const { recurringByDay, upcoming } = useMemo(() => {
     const all = blocks ?? [];
     const recurringByDay = new Map<number, AgendaBlock[]>();
     for (const b of all) {
@@ -212,7 +206,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
     const upcoming = all
       .filter((b) => b.date !== null)
       .sort((a, b) => a.date!.localeCompare(b.date!) || a.start_time.localeCompare(b.start_time));
-    return { recurringByDay, upcoming, labelColors: colorsByLabel(all) };
+    return { recurringByDay, upcoming };
   }, [blocks]);
 
   const today = limaDayOfWeek();
@@ -251,7 +245,26 @@ export function AgendaPanel({ active }: { active: boolean }) {
           <div className="bg-panel border border-border rounded-xl p-4 mb-5 flex flex-col gap-4">
             {error && <div className="text-xs text-red-400">{error}</div>}
 
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Qué es (ej. Clase de cálculo)" />
+            <div className="flex flex-col gap-1">
+              <Input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Qué es (ej. Cálculo) — mismo nombre = mismo curso/color"
+                list="agenda-course-suggestions"
+              />
+              <datalist id="agenda-course-suggestions">
+                {courses.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+              {matchingCourse && (
+                <div className="flex items-center gap-1.5 text-xs text-muted px-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: matchingCourse.color }} />
+                  Ya tenés este curso{matchingCourse.teacher ? ` — profesor: ${matchingCourse.teacher}` : ""}, se va a
+                  vincular solo.
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-col gap-1.5">
               <span className="text-[11px] uppercase tracking-wide text-muted">Cuándo</span>
@@ -387,7 +400,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
                   {(recurringByDay.get(dayIdx) ?? []).map((b) => {
                     const top = Math.max(0, toMinutes(b.start_time) - startHour * 60) * (HOUR_PX / 60);
                     const height = Math.max(22, (toMinutes(b.end_time) - toMinutes(b.start_time)) * (HOUR_PX / 60));
-                    const color = labelColors.get(b.label)!;
+                    const color = b.color ?? FALLBACK_COLOR;
                     return (
                       <button
                         key={b.id}
@@ -423,7 +436,7 @@ export function AgendaPanel({ active }: { active: boolean }) {
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: labelColors.get(b.label) }}
+                    style={{ background: b.color ?? FALLBACK_COLOR }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-gray-200 truncate">{b.label}</div>
@@ -452,7 +465,10 @@ function BlockDetail({ block, onClose, onDelete }: { block: AgendaBlock; onClose
     >
       <Card className="w-full max-w-sm p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
-          <h3 className="text-base font-semibold text-white">{block.label}</h3>
+          <h3 className="flex items-center gap-2 text-base font-semibold text-white">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: block.color ?? FALLBACK_COLOR }} />
+            {block.label}
+          </h3>
           <button onClick={onClose} className="text-muted hover:text-gray-200 shrink-0">
             <X size={16} />
           </button>

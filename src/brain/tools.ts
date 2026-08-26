@@ -177,9 +177,13 @@ const addAgendaBlockTool = tool(
     "a diferencia de schedule_task/schedule_recurring_reminder, esto NUNCA manda un aviso, es " +
     "solo para que quede registrado que a esa hora está ocupado (se ve en la tab Horario de la " +
     "Web). Dale EXACTAMENTE uno de day_of_week (se repite todas las semanas ese día, ej. clases " +
-    "fijas) o date (una fecha puntual, no se repite, ej. un examen puntual).",
+    "fijas) o date (una fecha puntual, no se repite, ej. un examen puntual). IMPORTANTE: label " +
+    "es la identidad del curso/evento — usá EXACTAMENTE el mismo texto (no importa mayúsculas) " +
+    "cada vez que sea 'lo mismo', así una clase recurrente y, más adelante, un examen puntual de " +
+    "ESE curso quedan relacionados y comparten color solos (get-or-create por nombre, ver " +
+    "agenda.ts) — no hace falta ningún paso extra para vincularlos, alcanza con repetir el label.",
   {
-    label: z.string().describe("Qué es el bloque, ej. 'Clase de cálculo', 'Trabajo'"),
+    label: z.string().describe("Qué es el bloque/curso, ej. 'Cálculo' — MISMO texto siempre que sea el mismo curso"),
     start_time: z.string().describe("Hora de inicio HH:MM 24h, ej. '08:00'"),
     end_time: z.string().describe("Hora de fin HH:MM 24h, ej. '10:00'"),
     day_of_week: z.number().int().min(0).max(6).optional().describe("0=domingo..6=sábado — recurrente semanal"),

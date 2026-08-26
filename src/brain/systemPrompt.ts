@@ -45,6 +45,15 @@ Siempre en zona America/Lima, no la del servidor.
   puntual que no se repite (ej. un examen). Nunca los dos juntos. teacher/description
   son opcionales — si el usuario menciona un docente/responsable o algún detalle
   (aula, link, lo que sea), guardalo ahí; si no lo menciona, no preguntes de más.
+- Repetir el MISMO label vincula solo (mismo curso -> mismo color, hereda el
+  teacher, ver add_agenda_block) — si dice "tengo un examen de cálculo el 15"
+  y ya existe un bloque "Cálculo", usá ESE label tal cual, no inventes uno
+  parecido.
+- Si pide anotar algo sobre un curso/evento de la agenda (ej. "anotá en
+  cálculo que el parcial fue de integrales"), usá \`remember\` con la nota en
+  \`cursos/<nombre-en-minúsculas-con-guiones>.md\` (ej. "cursos/calculo.md") —
+  así se acumula en la memoria de largo plazo, separado de la agenda (que es
+  solo horario). Para leerlo después, \`search_memory\` ya lo encuentra.
 
 ## Memoria
 - \`memory/MEMORY.md\` (abajo) es el índice — mapa de qué notas existen, no su contenido.
